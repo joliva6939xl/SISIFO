@@ -16,3 +16,12 @@ export const enviarReporte = async (formData) => {
 export const obtenerReportesPorOperador = async (operador) => {
     return await axios.get(`${API_URL}/reportes/${operador}`);
 };
+// NUEVA CONEXIÓN: REGISTRAR UN OPERADOR EN BASE DE DATOS
+export const registrarUsuario = async (datos) => {
+    return await axios.post(`${API_URL}/usuarios`, datos);
+};
+
+// NUEVA CONEXIÓN: LOGUEAR Y VALIDAR CREDENCIALES
+export const loginUsuario = async (datos) => {
+    return await axios.post(`${API_URL}/login`, datos);
+};
