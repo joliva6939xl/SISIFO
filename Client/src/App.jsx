@@ -7,14 +7,14 @@ function App() {
   const [sesionActiva, setSesionActiva] = useState(false);
   const [modoRegistro, setModoRegistro] = useState(false); 
   
-  // AÑADIDO: turno por defecto "MAÑANA"
   const [datosUsuario, setDatosUsuario] = useState({ nombre: '', apellido: '', dni: '', centro: 'BASE CENTRAL', turno: 'MAÑANA' });
   const [usuarioGenerado, setUsuarioGenerado] = useState('');
+  const [cargoUsuario, setCargoUsuario] = useState(''); 
   
   const [vistaActual, setVistaActual] = useState('FORMULARIO'); 
   const [etapa, setEtapa] = useState('INICIO'); 
 
-  const [form, setForm] = useState({ camara: '', zona: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
+  const [form, setForm] = useState({ camara: '', zona: '', roper: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
   const [archivos, setArchivos] = useState({ inicio: [], desarrollo: [], finalizado: [] });
   const [vistasPrevias, setVistasPrevias] = useState({ inicio: [], desarrollo: [], finalizado: [] });
 
@@ -63,7 +63,14 @@ function App() {
     try {
       const respuesta = await loginUsuario({ usuario: userEsperado, dni: datosUsuario.dni });
       if (respuesta.data.success) {
+        // Limpiamos espacios y aseguramos mayúsculas por seguridad
+        const cargoReal = respuesta.data.cargo ? respuesta.data.cargo.trim().toUpperCase() : 'OPERADOR';
+        
         setUsuarioGenerado(respuesta.data.usuario);
+        setCargoUsuario(cargoReal); 
+        
+        // CANDADO: Si es analista, se va obligado al ALMACÉN.
+        setVistaActual(cargoReal === 'ANALISTA' ? 'ALMACEN' : 'FORMULARIO');
         setSesionActiva(true);
       }
     } catch (error) {
@@ -90,7 +97,8 @@ function App() {
     if(window.confirm("¿Cerrar sesión activa?")) {
       setSesionActiva(false);
       setUsuarioGenerado(''); 
-      setForm({ camara: '', zona: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
+      setCargoUsuario('');
+      setForm({ camara: '', zona: '', roper: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
       setArchivos({ inicio: [], desarrollo: [], finalizado: [] });
       setVistasPrevias({ inicio: [], desarrollo: [], finalizado: [] });
       setEtapa('INICIO');
@@ -100,7 +108,7 @@ function App() {
 
   const avanzarEtapa = () => {
     if (etapa === 'INICIO') {
-      if (!form.camara || !form.zona || !form.asunto_inicio) return alert("Complete los datos requeridos.");
+      if (!form.camara || !form.zona || !form.roper || !form.asunto_inicio) return alert("Complete Cámara, Zona, Roper y Asunto Inicial.");
       setEtapa('DESARROLLO');
     } else if (etapa === 'DESARROLLO') {
       if (!form.asunto_desarrollo) return alert("Complete el desarrollo.");
@@ -124,11 +132,12 @@ function App() {
       fd.append('etapa', nombreEtapa);
       fd.append('camara', form.camara);
       fd.append('zona', form.zona);
+      fd.append('roper', form.roper);
       fd.append('asunto', asuntoTexto);
       fd.append('atendido', atendidoTexto);
       fd.append('operador', usuarioGenerado);
       fd.append('centro_trabajo', datosUsuario.centro);
-      fd.append('turno', datosUsuario.turno); // AÑADIMOS EL TURNO AL PAQUETE
+      fd.append('turno', datosUsuario.turno); 
       
       if (listaArchivos && listaArchivos.length > 0) {
         listaArchivos.forEach(file => fd.append('archivos', file));
@@ -142,7 +151,7 @@ function App() {
       if(form.asunto_finalizado) await enviarPaquete('FINALIZADO', form.asunto_finalizado, form.atendido, archivos.finalizado);
       alert(`Reporte consolidado enviado. ID: ${idGenerado}`);
       setEtapa('INICIO');
-      setForm({ camara: '', zona: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
+      setForm({ camara: '', zona: '', roper: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
       setArchivos({ inicio: [], desarrollo: [], finalizado: [] });
       setVistasPrevias({ inicio: [], desarrollo: [], finalizado: [] });
     } catch (error) {
@@ -156,15 +165,12 @@ function App() {
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'Arial', backgroundColor: '#f4f4f9' }}>
         <div style={{ background: 'white', padding: '40px', borderRadius: '10px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)', width: '380px' }}>
           <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>{modoRegistro ? 'SISIFO - REGISTRO' : 'SISIFO - ACCESO'}</h2>
-          
           <form onSubmit={modoRegistro ? handleRegistro : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <div style={{ flex: 1 }}><label style={{ fontSize: '12px', fontWeight: 'bold' }}><User size={12}/> Nombre</label><input type="text" style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, nombre: e.target.value})} required /></div>
-              <div style={{ flex: 1 }}><label style={{ fontSize: '12px', fontWeight: 'bold' }}>Apellido</label><input type="text" style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, apellido: e.target.value})} required /></div>
+              <div style={{ flex: 1 }}><label style={{ fontSize: '12px', fontWeight: 'bold' }}><User size={12}/> Nombre</label><input type="text" value={datosUsuario.nombre} style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, nombre: e.target.value.toUpperCase()})} required /></div>
+              <div style={{ flex: 1 }}><label style={{ fontSize: '12px', fontWeight: 'bold' }}>Apellido</label><input type="text" value={datosUsuario.apellido} style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, apellido: e.target.value.toUpperCase()})} required /></div>
             </div>
-
             <div><label style={{ fontSize: '12px', fontWeight: 'bold' }}><Shield size={12}/> Contraseña (DNI)</label><input type="password" style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, dni: e.target.value})} required maxLength={8} /></div>
-
             {!modoRegistro && (
               <div style={{ display: 'flex', gap: '10px' }}>
                 <div style={{ flex: 1 }}>
@@ -181,7 +187,6 @@ function App() {
                 </div>
               </div>
             )}
-
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
               {!modoRegistro ? (
                 <><button type="submit" style={{ flex: 2, background: '#0056b3', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}>INGRESAR <LogIn size={16} /></button><button type="button" onClick={() => setModoRegistro(true)} style={{ flex: 1, background: '#6c757d', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '3px', fontSize: '11px' }}><UserPlus size={14} /> Registrar</button></>
@@ -198,19 +203,32 @@ function App() {
   return (
     <div style={{ padding: '20px', maxWidth: '850px', margin: 'auto', fontFamily: 'Arial' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#333', color: 'white', padding: '10px', borderRadius: '5px', marginBottom: '10px', fontSize: '14px' }}>
-        {/* BARRA SUPERIOR ACTUALIZADA CON TURNO */}
-        <div><span style={{ marginRight: '15px' }}>Operador: <b>{usuarioGenerado}</b></span><span style={{ marginRight: '15px' }}>Base: <b>{datosUsuario.centro}</b></span><span style={{ color: '#ffc107' }}>Turno: <b>{datosUsuario.turno}</b></span></div>
+        <div>
+          <span style={{ marginRight: '15px' }}>Usuario: <b>{usuarioGenerado}</b></span>
+          <span style={{ marginRight: '15px', color: cargoUsuario === 'ANALISTA' ? '#8df' : '#28a745', fontSize: '12px', border: `1px solid ${cargoUsuario === 'ANALISTA' ? '#8df' : '#28a745'}`, padding: '2px 5px', borderRadius: '3px' }}>{cargoUsuario}</span>
+          <span style={{ marginRight: '15px' }}>Base: <b>{datosUsuario.centro}</b></span>
+          <span style={{ color: '#ffc107' }}>Turno: <b>{datosUsuario.turno}</b></span>
+        </div>
         <button onClick={handleLogout} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}><LogOut size={14} /> Salir</button>
       </div>
 
       <h2 style={{ textAlign: 'center', marginBottom: '15px' }}>SISTEMA SISIFO - MONITOREO</h2>
 
       <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', justifyContent: 'center' }}>
-        <button onClick={() => setVistaActual('FORMULARIO')} style={{ padding: '10px 15px', cursor: 'pointer', background: vistaActual === 'FORMULARIO' ? '#0056b3' : '#eee', color: vistaActual === 'FORMULARIO' ? 'white' : '#333', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>Nuevo Reporte</button>
-        <button onClick={() => setVistaActual('ALMACEN')} style={{ padding: '10px 15px', cursor: 'pointer', background: vistaActual === 'ALMACEN' ? '#0056b3' : '#eee', color: vistaActual === 'ALMACEN' ? 'white' : '#333', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>Mi Almacén (Historial)</button>
+        
+        {/* REGLA ESTRICTA: El botón "Nuevo Reporte" SOLO aparece si NO eres Analista */}
+        {cargoUsuario !== 'ANALISTA' && (
+          <button onClick={() => setVistaActual('FORMULARIO')} style={{ padding: '10px 15px', cursor: 'pointer', background: vistaActual === 'FORMULARIO' ? '#0056b3' : '#eee', color: vistaActual === 'FORMULARIO' ? 'white' : '#333', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>Nuevo Reporte</button>
+        )}
+        
+        <button onClick={() => setVistaActual('ALMACEN')} style={{ padding: '10px 15px', cursor: 'pointer', background: vistaActual === 'ALMACEN' ? '#0056b3' : '#eee', color: vistaActual === 'ALMACEN' ? 'white' : '#333', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>
+          {cargoUsuario === 'ANALISTA' ? 'Panel de Analista Global' : 'Mi Almacén (Historial)'}
+        </button>
+
       </div>
       
-      {vistaActual === 'FORMULARIO' ? (
+      {/* REGLA ESTRICTA: El formulario NUNCA se dibuja si eres Analista */}
+      {cargoUsuario !== 'ANALISTA' && vistaActual === 'FORMULARIO' ? (
         <div style={{ background: '#fff', border: '1px solid #ddd', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', maxWidth: '600px', margin: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '20px', fontSize: '12px', fontWeight: 'bold', color: '#666' }}>
             <span style={{ color: etapa === 'INICIO' ? '#0056b3' : 'inherit' }}>1. INICIO</span><span>→</span>
@@ -218,16 +236,19 @@ function App() {
             <span style={{ color: etapa === 'FINALIZADO' ? '#0056b3' : 'inherit' }}>3. FINALIZADO</span>
           </div>
           <h3 style={{ textAlign: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px', marginTop: 0 }}>Etapa: {etapa}</h3>
+          
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
-            <input style={{ padding: '8px', background: etapa !== 'INICIO' ? '#f0f0f0' : '#fff' }} type="text" placeholder="Cámara (Cam)" value={form.camara} onChange={e => setForm({...form, camara: e.target.value})} disabled={etapa !== 'INICIO'} />
-            <input style={{ padding: '8px', background: etapa !== 'INICIO' ? '#f0f0f0' : '#fff' }} type="text" placeholder="Zona" value={form.zona} onChange={e => setForm({...form, zona: e.target.value})} disabled={etapa !== 'INICIO'} />
+            <input style={{ padding: '8px', background: etapa !== 'INICIO' ? '#f0f0f0' : '#fff' }} type="text" placeholder="Cámara (Cam)" value={form.camara} onChange={e => setForm({...form, camara: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO'} />
+            <input style={{ padding: '8px', background: etapa !== 'INICIO' ? '#f0f0f0' : '#fff' }} type="text" placeholder="Zona" value={form.zona} onChange={e => setForm({...form, zona: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO'} />
+            <input style={{ padding: '8px', background: etapa !== 'INICIO' ? '#f0f0f0' : '#fff' }} type="text" placeholder="ROPER (Encargado del Servicio)" value={form.roper} onChange={e => setForm({...form, roper: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO'} />
           </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {etapa === 'INICIO' && <textarea style={{ padding: '8px', height: '60px' }} placeholder="Describa el Asunto Inicial..." value={form.asunto_inicio} onChange={e => setForm({...form, asunto_inicio: e.target.value})} />}
-            {etapa === 'DESARROLLO' && <textarea style={{ padding: '8px', height: '60px' }} placeholder="Describa el Desarrollo de la incidencia..." value={form.asunto_desarrollo} onChange={e => setForm({...form, asunto_desarrollo: e.target.value})} />}
+            {etapa === 'INICIO' && <textarea style={{ padding: '8px', height: '60px' }} placeholder="Describa el Asunto Inicial..." value={form.asunto_inicio} onChange={e => setForm({...form, asunto_inicio: e.target.value.toUpperCase()})} />}
+            {etapa === 'DESARROLLO' && <textarea style={{ padding: '8px', height: '60px' }} placeholder="Describa el Desarrollo de la incidencia..." value={form.asunto_desarrollo} onChange={e => setForm({...form, asunto_desarrollo: e.target.value.toUpperCase()})} />}
             {etapa === 'FINALIZADO' && (
-              <><textarea style={{ padding: '8px', height: '60px' }} placeholder="Conclusión / Reporte Final..." value={form.asunto_finalizado} onChange={e => setForm({...form, asunto_finalizado: e.target.value})} />
-                <input style={{ padding: '8px' }} type="text" placeholder="Atendido por..." value={form.atendido} onChange={e => setForm({...form, atendido: e.target.value})} /></>
+              <><textarea style={{ padding: '8px', height: '60px' }} placeholder="Conclusión / Reporte Final..." value={form.asunto_finalizado} onChange={e => setForm({...form, asunto_finalizado: e.target.value.toUpperCase()})} />
+                <input style={{ padding: '8px' }} type="text" placeholder="Atendido por..." value={form.atendido} onChange={e => setForm({...form, atendido: e.target.value.toUpperCase()})} /></>
             )}
             <label style={{ cursor: 'pointer', background: '#eaf4ff', padding: '15px', borderRadius: '5px', textAlign: 'center', border: '2px dashed #0056b3', marginTop: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginBottom: '5px', color: '#0056b3' }}><Camera size={20} /> o <ClipboardPaste size={20} /></div>
@@ -252,7 +273,7 @@ function App() {
           </div>
         </div>
       ) : (
-        <Almacen usuarioLogueado={usuarioGenerado} />
+        <Almacen usuarioLogueado={usuarioGenerado} cargo={cargoUsuario} />
       )}
     </div>
   );
