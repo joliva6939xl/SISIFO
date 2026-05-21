@@ -5,6 +5,9 @@ const multer = require('multer');
 const path = require('path');
 const app = express();
 
+// IMPORTACIÓN DEL CONTROLADOR DE EXPORTACIÓN
+const exportController = require('./exportController');
+
 app.use(cors());
 app.use(express.json());
 
@@ -42,17 +45,13 @@ app.post('/api/usuarios', async (req, res) => {
   }
 });
 
-// =======================================================
-// ACTUALIZADO: LOGIN AHORA DEVUELVE EL CARGO (ROL)
-// =======================================================
+// LOGIN
 app.post('/api/login', async (req, res) => {
   const { usuario, dni } = req.body;
   try {
-    // Agregamos "cargo" en el SELECT
     const result = await db.query('SELECT usuario, cargo FROM usuarios WHERE usuario = $1 AND dni = $2', [usuario, dni]);
     
     if (result.rows.length > 0) {
-      // Devolvemos el usuario y su cargo correspondiente
       res.json({ 
         success: true, 
         usuario: result.rows[0].usuario,
@@ -67,9 +66,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// =======================================================
-// NUEVA RUTA: TRAER LISTA DE USUARIOS (Para el Analista)
-// =======================================================
+// TRAER LISTA DE USUARIOS
 app.get('/api/usuarios', async (req, res) => {
   try {
     const result = await db.query('SELECT id, nombre, apellido, usuario, cargo FROM usuarios ORDER BY cargo ASC, nombre ASC');
@@ -80,7 +77,7 @@ app.get('/api/usuarios', async (req, res) => {
   }
 });
 
-// --- RUTA POST: GUARDAR REPORTE ---
+// RUTA POST: GUARDAR REPORTE
 app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
   const { id_incidencia, etapa, camara, zona, roper, asunto, atendido, operador, centro_trabajo, turno } = req.body;
   const rutas_archivos = req.files && req.files.length > 0 ? JSON.stringify(req.files.map(file => `/uploads/${file.filename}`)) : null;
@@ -97,9 +94,7 @@ app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
   }
 });
 
-// =======================================================
-// NUEVA RUTA GLOBAL: TRAE TODOS LOS REPORTES DE TODOS (Para el Analista)
-// =======================================================
+// RUTA GLOBAL: TRAE TODOS LOS REPORTES
 app.get('/api/reportes_globales', async (req, res) => {
   try {
     const result = await db.query(
@@ -115,7 +110,7 @@ app.get('/api/reportes_globales', async (req, res) => {
   }
 });
 
-// --- RUTA GET: TRAE SOLO LOS REPORTES DE UN OPERADOR (Se mantiene para consistencia) ---
+// RUTA GET: TRAE SOLO LOS REPORTES DE UN OPERADOR
 app.get('/api/reportes/:operador', async (req, res) => {
   const { operador } = req.params;
   try {
@@ -129,6 +124,9 @@ app.get('/api/reportes/:operador', async (req, res) => {
     res.status(500).send('Error al leer almacén del operador.');
   }
 });
+
+// --- RUTA NUEVA: EXPORTAR A EXCEL ---
+app.post('/api/exportar', exportController.descargarReporte);
 
 const PORT = 3000;
 app.listen(PORT, () => { console.log(`Servidor SISIFO corriendo en el puerto ${PORT}`); });
