@@ -51,7 +51,6 @@ function Almacen({ usuarioLogueado, cargo }) {
     catch { return [foto_video]; } 
   };
 
-  // === INTEGRACIÓN EXPORTACIÓN ===
   const handleExportar = async (datos) => {
     try {
       const response = await fetch('http://localhost:3000/api/exportar', {
@@ -74,7 +73,6 @@ function Almacen({ usuarioLogueado, cargo }) {
 
   if (cargando) return <p style={{ textAlign: 'center', marginTop: '50px' }}>Cargando registros...</p>;
 
-  // === VISTA EXCLUSIVA: LISTA DE USUARIOS ===
   if (cargo === 'ANALISTA' && vistaAnalista === 'USUARIOS' && !informeSeleccionado) {
     return (
       <div style={{ fontFamily: 'Arial' }}>
@@ -109,7 +107,6 @@ function Almacen({ usuarioLogueado, cargo }) {
     );
   }
 
-  // --- FILTRADO DE DATOS ---
   const expedientesArray = Object.keys(reportesAgrupados).map(id => {
     const paquete = reportesAgrupados[id];
     const inicio = paquete.find(p => p.etapa === 'INICIO') || paquete[0];
@@ -132,7 +129,6 @@ function Almacen({ usuarioLogueado, cargo }) {
     return coincideBusqueda && coincideTurno && coincideZona && coincideFecha && coincideOperador;
   });
 
-  // --- CÁLCULO PARA GRÁFICOS Y TARJETAS ---
   const metricasZonas = {};
   expedientesFiltrados.forEach(exp => {
     const zonaTexto = (exp.inicio.zona || 'DESCONOCIDA').toUpperCase().trim();
@@ -145,7 +141,6 @@ function Almacen({ usuarioLogueado, cargo }) {
   const indiceInicial = (paginaActual - 1) * REGISTROS_POR_PAGINA;
   const expedientesPaginados = expedientesFiltrados.slice(indiceInicial, indiceInicial + REGISTROS_POR_PAGINA);
 
-  // === VISTA DEL INFORME DETALLADO ===
   if (informeSeleccionado) {
     const orden = ['INICIO', 'DESARROLLO', 'FINALIZADO'];
     const informeOrdenado = [...informeSeleccionado].sort((a, b) => orden.indexOf(a.etapa) - orden.indexOf(b.etapa));
@@ -193,7 +188,6 @@ function Almacen({ usuarioLogueado, cargo }) {
     );
   }
 
-  // === RENDERIZADO PRINCIPAL ===
   return (
     <div style={{ fontFamily: 'Arial' }}>
       
@@ -209,10 +203,13 @@ function Almacen({ usuarioLogueado, cargo }) {
           <FileText size={20} style={{ verticalAlign: 'middle', marginRight: '8px' }} />
           {cargo === 'ANALISTA' ? 'Panel Global de Analítica' : `Historial y Productividad de: ${usuarioLogueado}`}
         </h3>
-        {/* BOTÓN DESCARGA INTEGRADO AQUÍ */}
-        <button onClick={() => handleExportar(expedientesFiltrados)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+        
+        {/* RESTRICCIÓN DE BOTÓN DE DESCARGA AQUÍ */}
+        {cargo === 'ANALISTA' && (
+          <button onClick={() => handleExportar(expedientesFiltrados)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
             <Download size={16} /> Excel
-        </button>
+          </button>
+        )}
       </div>
 
       {expedientesArray.length === 0 ? (

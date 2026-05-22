@@ -28,3 +28,5 @@ export const registrarUsuario = async (datos) => {
 export const loginUsuario = async (datos) => {
     return await axios.post(`${API_URL}/login`, datos);
 };
+export const eliminarUsuario = (id) => axios.delete(`${API_URL}/usuarios/${id}`);
+export const actualizarEstadoUsuario = (id, data) => axios.put(`${API_URL}/usuarios/${id}/estado`, data);
