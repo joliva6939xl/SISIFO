@@ -58,7 +58,10 @@ function App() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!datosUsuario.nombre || !datosUsuario.apellido || !datosUsuario.dni) return alert("Complete los datos.");
+    if (!datosUsuario.nombre || !datosUsuario.apellido || !datosUsuario.dni) {
+      alert("Complete los datos.");
+      return;
+    }
     const userEsperado = datosUsuario.nombre.charAt(0).toLowerCase() + datosUsuario.apellido.toLowerCase().replace(/\s/g, ''); 
 
     try {
@@ -78,22 +81,30 @@ function App() {
         setSesionActiva(true);
       }
     } catch (error) {
-      if (error.response && error.response.status === 403) {
-        alert("¡ATENCIÓN! 🔒\n\nSISTEMA BLOQUEADO.\nContacte al administrador para habilitar el acceso.");
+      if (error.response) {
+         // Si es error 403 de GitHub, mostramos el alert
+         if(error.response.status === 403) {
+            alert("¡ATENCIÓN! 🔒\n\nSISTEMA BLOQUEADO.\nContacte al administrador.");
+         } else {
+            alert(error.response.data || "Error al intentar ingresar.");
+         }
       } else {
-        alert(error.response?.data || "Error al intentar ingresar.");
+         alert("Error de conexión con el servidor.");
       }
     }
   };
 
   const handleRegistro = async (e) => {
     e.preventDefault();
-    if (!datosUsuario.nombre || !datosUsuario.apellido || !datosUsuario.dni) return alert("Complete los campos.");
+    if (!datosUsuario.nombre || !datosUsuario.apellido || !datosUsuario.dni) {
+      alert("Complete los campos.");
+      return;
+    }
 
     try {
       const respuesta = await registrarUsuario({ nombre: datosUsuario.nombre, apellido: datosUsuario.apellido, dni: datosUsuario.dni, cargo: 'OPERADOR' });
       if (respuesta.data.success) {
-        alert(`Operador creado con éxito. Usuario: ${respuesta.data.usuario}`);
+        alert(`Operador creado con éxito. Usuario: ${respuesta.data.usuario} \nContraseña: ${datosUsuario.dni}`);
         setModoRegistro(false); 
       }
     } catch (error) {

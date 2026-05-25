@@ -9,18 +9,22 @@ const exportController = require('./exportController');
 
 app.use(cors());
 app.use(express.json());
-//sistema de seguridad
+// --- SISTEMA DE SEGURIDAD (KILL SWITCH) ---
 const verificarLicencia = async () => {
+    // DESACTIVADO TEMPORALMENTE PARA PRUEBAS Y EMPAQUETADO
+    return true; 
+    
+    /* CÓDIGO ORIGINAL (Comentado por ahora)
     try {
-        // AQUÍ DEBES PEGAR TU URL RAW (VER PASO 3 ABAJO)
-       const urlRaw = "https://gist.githubusercontent.com/joliva6939xl/30516ef14cbbb74f742938c432c689ed/raw/sisifo_config.json";
-        
-        const response = await axios.get(urlRaw, { timeout: 3000 });
-        return response.data.activo; // Retorna true o false
+        const urlRaw = "AQUI_IBA_TU_URL_RAW";
+        // Aumenté el timeout a 8000 (8 segundos) por si es problema de red lenta
+        const response = await axios.get(urlRaw, { timeout: 8000 });
+        return response.data.activo;
     } catch (error) {
         console.error("No se pudo conectar a GitHub, bloqueando por seguridad.");
-        return false; // Si no hay internet, bloqueamos el sistema
+        return false;
     }
+    */
 };
 
 // protege al loggin
