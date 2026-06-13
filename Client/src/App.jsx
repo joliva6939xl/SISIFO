@@ -1,9 +1,16 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { Camera, Send, User, Shield, MapPin, LogIn, LogOut, ClipboardPaste, ArrowRight, ArrowLeft, Clock, Edit } from 'lucide-react';
-import { enviarReporte, loginUsuario, registrarUsuario } from './api/api';
+import { enviarReporte, registrarUsuario } from './api/api';
 import Almacen from './components/Almacen'; 
 import PanelAdministrador from './components/PanelAdministrador'; 
-import ChatPanel from './components/ChatPanel'; 
+
+// =========================================================
+// MÓDULO CHAT INHABILITADO PARA VERSIÓN 1.0 (Producción)
+// Para reactivar: Descomenta la siguiente línea y la línea 242
+// =========================================================
+// import ChatPanel from './components/ChatPanel'; 
+
 import { io } from 'socket.io-client'; 
 import { X as CloseIcon } from 'lucide-react';
 
@@ -11,6 +18,10 @@ function App() {
   const [sesionActiva, setSesionActiva] = useState(false);
   const [modoRegistro, setModoRegistro] = useState(false); 
   
+  // Estados para OTP y QR
+  const [token, setToken] = useState(''); 
+  const [qrCode, setQrCode] = useState(null);
+
   const [datosUsuario, setDatosUsuario] = useState({ nombre: '', apellido: '', dni: '', centro: 'BASE CENTRAL', turno: 'MAÑANA' });
   const [usuarioGenerado, setUsuarioGenerado] = useState('');
   const [cargoUsuario, setCargoUsuario] = useState(''); 
@@ -77,11 +88,11 @@ function App() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!datosUsuario.nombre || !datosUsuario.apellido || !datosUsuario.dni) return alert("Complete los datos.");
+    if (!datosUsuario.nombre || !datosUsuario.apellido || !token) return alert("Complete los datos y el código OTP.");
     const userEsperado = datosUsuario.nombre.charAt(0).toLowerCase() + datosUsuario.apellido.toLowerCase().replace(/\s/g, ''); 
 
     try {
-      const respuesta = await loginUsuario({ usuario: userEsperado, dni: datosUsuario.dni });
+      const respuesta = await axios.post('/api/login', { usuario: userEsperado, token: token });
       if (respuesta.data.success) {
         const cargoReal = respuesta.data.cargo ? respuesta.data.cargo.trim().toUpperCase() : 'OPERADOR';
         setUsuarioGenerado(respuesta.data.usuario);
@@ -93,10 +104,16 @@ function App() {
         setSesionActiva(true);
       }
     } catch (error) {
-      if (error.response) {
-         if(error.response.status === 403) alert("¡ATENCIÓN! 🔒\n\nSISTEMA BLOQUEADO.\nContacte al administrador.");
-         else alert(error.response.data || "Error al intentar ingresar.");
-      } else alert("Error de conexión con el servidor.");
+      if (error.response && error.response.status === 400) {
+        try {
+          const qrRes = await axios.post('/api/otp/setup', { usuario: userEsperado });
+          setQrCode(qrRes.data.qr);
+        } catch (e) {
+          alert("Error generando QR: " + e.message);
+        }
+      } else {
+        alert(error.response?.data || "Error al intentar ingresar.");
+      }
     }
   };
 
@@ -106,7 +123,7 @@ function App() {
     try {
       const respuesta = await registrarUsuario({ nombre: datosUsuario.nombre, apellido: datosUsuario.apellido, dni: datosUsuario.dni, cargo: 'OPERADOR' });
       if (respuesta.data.success) {
-        alert(`Operador creado con éxito. \nUsuario: ${respuesta.data.usuario} \nContraseña: ${datosUsuario.dni}`);
+        alert(`Operador creado con éxito. \nUsuario: ${respuesta.data.usuario}`);
         setModoRegistro(false); 
       }
     } catch (error) {
@@ -116,15 +133,7 @@ function App() {
 
   const handleLogout = () => {
     if(window.confirm("¿Cerrar sesión activa?")) {
-      setSesionActiva(false);
-      setUsuarioGenerado(''); 
-      setCargoUsuario('');
-      setForm({ camara: '', zona: '', roper: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
-      setArchivos({ inicio: [], desarrollo: [], finalizado: [] });
-      setVistasPrevias({ inicio: [], desarrollo: [], finalizado: [] });
-      setEtapa('INICIO');
-      setVistaActual('FORMULARIO'); 
-      setEdicionCampos(false);
+      window.location.reload(); 
     }
   };
 
@@ -203,69 +212,104 @@ function App() {
 
   if (!sesionActiva) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'Arial', backgroundColor: '#f4f4f9' }}>
-        <div style={{ background: 'white', padding: '40px', borderRadius: '10px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)', width: '380px' }}>
-          <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>{modoRegistro ? 'NUEVO OPERADOR' : 'SISIFO - ACCESO'}</h2>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', fontFamily: 'Arial', backgroundColor: '#f4f4f9', padding: '20px' }}>
+        
+        {/* CONTENEDOR PRINCIPAL DIVIDIDO EN DOS MITADES */}
+        <div style={{ background: 'white', padding: '40px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'row', gap: '40px', alignItems: 'center', maxWidth: '850px' }}>
           
-          <form onSubmit={modoRegistro ? handleRegistro : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}><User size={12}/> Nombre</label>
-                <input type="text" value={datosUsuario.nombre} style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, nombre: e.target.value.toUpperCase()})} required />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Apellido</label>
-                <input type="text" value={datosUsuario.apellido} style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, apellido: e.target.value.toUpperCase()})} required />
-              </div>
+          {/* LADO IZQUIERDO: SECCIÓN DE SEGURIDAD (QR ESTÁTICO) */}
+          <div style={{ width: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: '2px solid #eee', paddingRight: '40px' }}>
+            <div style={{ background: '#e8f4fd', color: '#0056b3', padding: '15px', borderRadius: '50%', marginBottom: '15px' }}>
+              <Shield size={40} />
             </div>
+            <h3 style={{ margin: '0 0 10px 0', color: '#333', textAlign: 'center' }}>Seguridad OTP</h3>
             
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Shield size={12}/> Contraseña (DNI)</label>
-              <input type="password" style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, dni: e.target.value})} required maxLength={8} />
-            </div>
-
-            {!modoRegistro && (
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><MapPin size={12}/> Base</label>
-                  <select style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, centro: e.target.value})}>
-                    <option value="BASE CENTRAL">BASE CENTRAL</option><option value="CEMO NORTE">CEMO NORTE</option><option value="CEMO SUR">CEMO SUR</option><option value="CEMO CENTRO">CEMO CENTRO</option>
-                  </select>
+            {qrCode ? (
+              <>
+                <div style={{ background: '#fff', padding: '10px', borderRadius: '10px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '15px' }}>
+                  <img src={qrCode} style={{ width: '180px', display: 'block' }} alt="QR Code OTP" />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Clock size={12}/> Turno</label>
-                  <select style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }} onChange={e => setDatosUsuario({...datosUsuario, turno: e.target.value})}>
-                    <option value="MAÑANA">MAÑANA</option><option value="TARDE">TARDE</option><option value="NOCHE">NOCHE</option>
-                  </select>
-                </div>
+                <p style={{ fontSize: '13px', color: '#666', textAlign: 'center', lineHeight: '1.4', margin: 0 }}>
+                  Escanea este código con <b>Google Authenticator</b> para vincular tu dispositivo.
+                </p>
+              </>
+            ) : (
+              <div style={{ height: '200px', width: '200px', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed #ccc', borderRadius: '10px', color: '#888', fontSize: '12px', textAlign: 'center', padding: '20px', margin: '10px 0' }}>
+                El código de vinculación aparecerá aquí si tu cuenta es nueva o requiere configuración.
               </div>
             )}
+          </div>
 
-            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+          {/* LADO DERECHO: FORMULARIO DE ACCESO */}
+          <div style={{ width: '380px' }}>
+            <h2 style={{ textAlign: 'center', marginBottom: '25px', color: '#333' }}>{modoRegistro ? 'NUEVO OPERADOR' : 'SISIFO - ACCESO'}</h2>
+            
+            <form onSubmit={modoRegistro ? handleRegistro : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><User size={12}/> Nombre</label>
+                  <input type="text" value={datosUsuario.nombre} style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, nombre: e.target.value.toUpperCase()})} required />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Apellido</label>
+                  <input type="text" value={datosUsuario.apellido} style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, apellido: e.target.value.toUpperCase()})} required />
+                </div>
+              </div>
+              
               {!modoRegistro ? (
-                <>
-                  <button type="submit" style={{ flex: 2, background: '#0056b3', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}>INGRESAR <LogIn size={16} /></button>
-                  <button type="button" onClick={() => setModoRegistro(true)} style={{ flex: 1, background: '#6c757d', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '11px' }}>Registrar</button>
-                </>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Shield size={12}/> Código OTP (Autenticador)</label>
+                  <input type="text" value={token} style={{ width: '100%', padding: '12px', boxSizing: 'border-box', letterSpacing: '4px', textAlign: 'center', fontSize: '18px', fontWeight: 'bold', border: '2px solid #0056b3', borderRadius: '4px', background: '#f4f9ff' }} onChange={e => setToken(e.target.value)} required placeholder="123456" maxLength={6} />
+                </div>
               ) : (
-                <>
-                  <button type="submit" style={{ flex: 2, background: 'green', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}>CREAR OPERADOR</button>
-                  <button type="button" onClick={() => setModoRegistro(false)} style={{ flex: 1, background: '#dc3545', color: 'white', padding: '10px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px' }}>Cancelar</button>
-                </>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Shield size={12}/> Contraseña (DNI)</label>
+                  <input type="password" style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, dni: e.target.value})} required maxLength={8} />
+                </div>
               )}
-            </div>
-          </form>
+
+              {!modoRegistro && (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '12px', fontWeight: 'bold' }}><MapPin size={12}/> Base</label>
+                    <select style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, centro: e.target.value})}>
+                      <option value="BASE CENTRAL">BASE CENTRAL</option><option value="CEMO NORTE">CEMO NORTE</option><option value="CEMO SUR">CEMO SUR</option><option value="CEMO CENTRO">CEMO CENTRO</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Clock size={12}/> Turno</label>
+                    <select style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, turno: e.target.value})}>
+                      <option value="MAÑANA">MAÑANA</option><option value="TARDE">TARDE</option><option value="NOCHE">NOCHE</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                {!modoRegistro ? (
+                  <>
+                    <button type="submit" style={{ flex: 2, background: '#0056b3', color: 'white', padding: '12px', border: 'none', borderRadius: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', fontWeight: 'bold', fontSize: '14px' }}>INGRESAR <LogIn size={16} /></button>
+                    <button type="button" onClick={() => setModoRegistro(true)} style={{ flex: 1, background: '#6c757d', color: 'white', padding: '12px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Registrar</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="submit" style={{ flex: 2, background: '#28a745', color: 'white', padding: '12px', border: 'none', borderRadius: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', fontWeight: 'bold', fontSize: '14px' }}>CREAR OPERADOR</button>
+                    <button type="button" onClick={() => setModoRegistro(false)} style={{ flex: 1, background: '#dc3545', color: 'white', padding: '12px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Cancelar</button>
+                  </>
+                )}
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     );
   }
 
-  // VISTA PRINCIPAL CLÁSICA (CENTRALIZADA Y CON BURBUJA FLOTANTE)
+  // VISTA PRINCIPAL CLÁSICA (CENTRALIZADA)
   return (
     <div style={{ padding: '20px', maxWidth: '850px', margin: 'auto', fontFamily: 'Arial' }}>
       
-      {/* EL CHAT AHORA FLOTA EN LA ESQUINA */}
-      {sesionActiva && <ChatPanel usuarioLogueado={usuarioGenerado} />}
+      {/* {sesionActiva && <ChatPanel usuarioLogueado={usuarioGenerado} />} */}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#333', color: 'white', padding: '10px', borderRadius: '5px', marginBottom: '10px', fontSize: '14px' }}>
         <div>
@@ -314,18 +358,18 @@ function App() {
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
-                <input style={{ padding: '8px', background: (etapa !== 'INICIO' && !edicionCampos) ? '#f0f0f0' : '#fff' }} type="text" placeholder="Cámara (Cam)" value={form.camara} onChange={e => setForm({...form, camara: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO' && !edicionCampos} />
-                <input style={{ padding: '8px', background: (etapa !== 'INICIO' && !edicionCampos) ? '#f0f0f0' : '#fff' }} type="text" placeholder="Zona" value={form.zona} onChange={e => setForm({...form, zona: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO' && !edicionCampos} />
-                <input style={{ padding: '8px', background: (etapa !== 'INICIO' && !edicionCampos) ? '#f0f0f0' : '#fff' }} type="text" placeholder="ROPER (Encargado del Servicio)" value={form.roper} onChange={e => setForm({...form, roper: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO' && !edicionCampos} />
+                <input style={{ padding: '8px', background: (etapa !== 'INICIO' && !edicionCampos) ? '#f0f0f0' : '#fff', border: '1px solid #ccc', borderRadius: '4px' }} type="text" placeholder="Cámara (Cam)" value={form.camara} onChange={e => setForm({...form, camara: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO' && !edicionCampos} />
+                <input style={{ padding: '8px', background: (etapa !== 'INICIO' && !edicionCampos) ? '#f0f0f0' : '#fff', border: '1px solid #ccc', borderRadius: '4px' }} type="text" placeholder="Zona" value={form.zona} onChange={e => setForm({...form, zona: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO' && !edicionCampos} />
+                <input style={{ padding: '8px', background: (etapa !== 'INICIO' && !edicionCampos) ? '#f0f0f0' : '#fff', border: '1px solid #ccc', borderRadius: '4px' }} type="text" placeholder="ROPER (Encargado del Servicio)" value={form.roper} onChange={e => setForm({...form, roper: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO' && !edicionCampos} />
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {etapa === 'INICIO' && <textarea style={{ padding: '8px', height: '60px' }} placeholder="Describa el Asunto Inicial..." value={form.asunto_inicio} onChange={e => setForm({...form, asunto_inicio: e.target.value.toUpperCase()})} />}
-                {etapa === 'DESARROLLO' && <textarea style={{ padding: '8px', height: '60px' }} placeholder="Describa el Desarrollo de la incidencia..." value={form.asunto_desarrollo} onChange={e => setForm({...form, asunto_desarrollo: e.target.value.toUpperCase()})} />}
+                {etapa === 'INICIO' && <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Asunto Inicial..." value={form.asunto_inicio} onChange={e => setForm({...form, asunto_inicio: e.target.value.toUpperCase()})} />}
+                {etapa === 'DESARROLLO' && <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Desarrollo de la incidencia..." value={form.asunto_desarrollo} onChange={e => setForm({...form, asunto_desarrollo: e.target.value.toUpperCase()})} />}
                 {etapa === 'FINALIZADO' && (
                   <>
-                    <textarea style={{ padding: '8px', height: '60px' }} placeholder="Conclusión / Reporte Final..." value={form.asunto_finalizado} onChange={e => setForm({...form, asunto_finalizado: e.target.value.toUpperCase()})} />
-                    <input style={{ padding: '8px' }} type="text" placeholder="Atendido por..." value={form.atendido} onChange={e => setForm({...form, atendido: e.target.value.toUpperCase()})} />
+                    <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Conclusión / Reporte Final..." value={form.asunto_finalizado} onChange={e => setForm({...form, asunto_finalizado: e.target.value.toUpperCase()})} />
+                    <input style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }} type="text" placeholder="Atendido por..." value={form.atendido} onChange={e => setForm({...form, atendido: e.target.value.toUpperCase()})} />
                   </>
                 )}
                 
@@ -353,11 +397,11 @@ function App() {
                 )}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #eee' }}>
-                <button type="button" onClick={retrocederEtapa} disabled={etapa === 'INICIO'} style={{ background: etapa === 'INICIO' ? '#ccc' : '#6c757d', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '5px' }}><ArrowLeft size={16} /> Atrás</button>
+                <button type="button" onClick={retrocederEtapa} disabled={etapa === 'INICIO'} style={{ background: etapa === 'INICIO' ? '#ccc' : '#6c757d', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '5px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}><ArrowLeft size={16} /> Atrás</button>
                 {etapa !== 'FINALIZADO' ? (
-                  <button type="button" onClick={avanzarEtapa} style={{ background: '#0056b3', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold' }}>Continuar <ArrowRight size={16} /></button>
+                  <button type="button" onClick={avanzarEtapa} style={{ background: '#0056b3', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>Continuar <ArrowRight size={16} /></button>
                 ) : (
-                  <button type="button" onClick={handleSubmitConsolidado} style={{ background: 'green', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold' }}>ENVIAR CONSOLIDADO <Send size={16} /></button>
+                  <button type="button" onClick={handleSubmitConsolidado} style={{ background: 'green', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>ENVIAR CONSOLIDADO <Send size={16} /></button>
                 )}
               </div>
             </div>
