@@ -1,32 +1,32 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Camera, Send, User, Shield, MapPin, LogIn, LogOut, ClipboardPaste, ArrowRight, ArrowLeft, Clock, Edit } from 'lucide-react';
+import { X as CloseIcon } from 'lucide-react';
+import { io } from 'socket.io-client'; 
+
 import { enviarReporte, registrarUsuario } from './api/api';
 import Almacen from './components/Almacen'; 
 import PanelAdministrador from './components/PanelAdministrador'; 
 
-// =========================================================
-// MÓDULO CHAT INHABILITADO PARA VERSIÓN 1.0 (Producción)
-// Para reactivar: Descomenta la siguiente línea y la línea 242
-// =========================================================
-// import ChatPanel from './components/ChatPanel'; 
-
-import { io } from 'socket.io-client'; 
-import { X as CloseIcon } from 'lucide-react';
-
 function App() {
-  const [sesionActiva, setSesionActiva] = useState(false);
+  // Inicialización inteligente para persistencia de sesión
+  const [sesionActiva, setSesionActiva] = useState(() => localStorage.getItem('sisifo_user') !== null);
   const [modoRegistro, setModoRegistro] = useState(false); 
-  
-  // Estados para OTP y QR
   const [token, setToken] = useState(''); 
   const [qrCode, setQrCode] = useState(null);
 
   const [datosUsuario, setDatosUsuario] = useState({ nombre: '', apellido: '', dni: '', centro: 'BASE CENTRAL', turno: 'MAÑANA' });
-  const [usuarioGenerado, setUsuarioGenerado] = useState('');
-  const [cargoUsuario, setCargoUsuario] = useState(''); 
+  const [usuarioGenerado, setUsuarioGenerado] = useState(() => localStorage.getItem('sisifo_user') || '');
+  const [cargoUsuario, setCargoUsuario] = useState(() => localStorage.getItem('sisifo_cargo') || ''); 
   
-  const [vistaActual, setVistaActual] = useState('FORMULARIO'); 
+  // SOLUCIÓN AL PROBLEMA DE REDIRECCIÓN: Inicialización inmediata del perfil
+  const [vistaActual, setVistaActual] = useState(() => {
+    const cargo = localStorage.getItem('sisifo_cargo');
+    if (cargo === 'ADMINISTRADOR') return 'ADMINISTRADOR';
+    if (cargo === 'ANALISTA') return 'ALMACEN';
+    return 'FORMULARIO';
+  });
+
   const [etapa, setEtapa] = useState('INICIO'); 
   const [edicionCampos, setEdicionCampos] = useState(false);
 
@@ -34,15 +34,32 @@ function App() {
   const [archivos, setArchivos] = useState({ inicio: [], desarrollo: [], finalizado: [] });
   const [vistasPrevias, setVistasPrevias] = useState({ inicio: [], desarrollo: [], finalizado: [] });
 
+  // 1. CARGAR QR AUTOMÁTICO
+  useEffect(() => {
+    const cargarQRAutomatico = async () => {
+      if (datosUsuario.nombre && datosUsuario.apellido) {
+        const userEsperado = datosUsuario.nombre.charAt(0).toLowerCase() + datosUsuario.apellido.toLowerCase().replace(/\s/g, '');
+        try {
+          const qrRes = await axios.post('/api/otp/setup', { usuario: userEsperado });
+          setQrCode(qrRes.data.qr);
+        } catch (err) {
+          console.error("Error al cargar QR:", err);
+        }
+      } else {
+        setQrCode(null);
+      }
+    };
+    cargarQRAutomatico();
+  }, [datosUsuario.nombre, datosUsuario.apellido]);
+
+  // 2. LÓGICA DE IMÁGENES
   useEffect(() => {
     const handlePasteGlobal = (e) => {
       if (!sesionActiva || vistaActual !== 'FORMULARIO') return;
       const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
       if (!items) return;
-
       let pegoImagen = false;
       const currEtapa = etapa.toLowerCase();
-
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image') !== -1) {
           pegoImagen = true;
@@ -50,7 +67,6 @@ function App() {
           if (!blob) continue;
           const file = new File([blob], `evidencia_${currEtapa}_${Date.now()}_${i}.png`, { type: blob.type });
           const reader = new FileReader();
-          
           reader.onloadend = () => {
             setArchivos(prev => ({...prev, [currEtapa]: [...prev[currEtapa], file]}));
             setVistasPrevias(prev => ({...prev, [currEtapa]: [...prev[currEtapa], reader.result]}));
@@ -60,7 +76,6 @@ function App() {
       }
       if (pegoImagen) e.preventDefault();
     };
-
     document.addEventListener('paste', handlePasteGlobal);
     return () => document.removeEventListener('paste', handlePasteGlobal);
   }, [etapa, sesionActiva, vistaActual]); 
@@ -90,30 +105,24 @@ function App() {
     e.preventDefault();
     if (!datosUsuario.nombre || !datosUsuario.apellido || !token) return alert("Complete los datos y el código OTP.");
     const userEsperado = datosUsuario.nombre.charAt(0).toLowerCase() + datosUsuario.apellido.toLowerCase().replace(/\s/g, ''); 
-
     try {
       const respuesta = await axios.post('/api/login', { usuario: userEsperado, token: token });
       if (respuesta.data.success) {
         const cargoReal = respuesta.data.cargo ? respuesta.data.cargo.trim().toUpperCase() : 'OPERADOR';
+        localStorage.setItem('sisifo_user', respuesta.data.usuario);
+        localStorage.setItem('sisifo_cargo', cargoReal);
         setUsuarioGenerado(respuesta.data.usuario);
         setCargoUsuario(cargoReal); 
         
+        // Determinar vista inicial tras login
         if (cargoReal === 'ADMINISTRADOR') setVistaActual('ADMINISTRADOR');
-        else setVistaActual(cargoReal === 'ANALISTA' ? 'ALMACEN' : 'FORMULARIO');
+        else if (cargoReal === 'ANALISTA') setVistaActual('ALMACEN');
+        else setVistaActual('FORMULARIO');
         
         setSesionActiva(true);
       }
     } catch (error) {
-      if (error.response && error.response.status === 400) {
-        try {
-          const qrRes = await axios.post('/api/otp/setup', { usuario: userEsperado });
-          setQrCode(qrRes.data.qr);
-        } catch (e) {
-          alert("Error generando QR: " + e.message);
-        }
-      } else {
-        alert(error.response?.data || "Error al intentar ingresar.");
-      }
+      alert("Atención: " + (error.response?.data || "Error al intentar ingresar."));
     }
   };
 
@@ -123,27 +132,30 @@ function App() {
     try {
       const respuesta = await registrarUsuario({ nombre: datosUsuario.nombre, apellido: datosUsuario.apellido, dni: datosUsuario.dni, cargo: 'OPERADOR' });
       if (respuesta.data.success) {
-        alert(`Operador creado con éxito. \nUsuario: ${respuesta.data.usuario}`);
+        alert(`Operador creado: ${respuesta.data.usuario}`);
         setModoRegistro(false); 
       }
     } catch (error) {
-      alert(error.response?.data || "No se pudo registrar al operador.");
+      alert(error.response?.data || "Error al registrar.");
     }
   };
 
   const handleLogout = () => {
-    if(window.confirm("¿Cerrar sesión activa?")) {
+    if(window.confirm("¿Cerrar sesión?")) {
+      localStorage.removeItem('sisifo_user');
+      localStorage.removeItem('sisifo_cargo');
+      setSesionActiva(false);
       window.location.reload(); 
     }
   };
 
   const avanzarEtapa = () => {
     if (etapa === 'INICIO') {
-      if (!form.camara || !form.zona || !form.roper || !form.asunto_inicio) return alert("Complete Cámara, Zona, Roper y Asunto Inicial.");
+      if (!form.camara || !form.zona || !form.roper || !form.asunto_inicio) return alert("Complete datos iniciales.");
       setEtapa('DESARROLLO');
       setEdicionCampos(false); 
     } else if (etapa === 'DESARROLLO') {
-      if (!form.asunto_desarrollo) return alert("Complete el desarrollo.");
+      if (!form.asunto_desarrollo) return alert("Complete desarrollo.");
       setEtapa('FINALIZADO');
       setEdicionCampos(false);
     }
@@ -157,7 +169,7 @@ function App() {
 
   const handleSubmitConsolidado = async (e) => {
     e.preventDefault();
-    if (!form.asunto_finalizado || !form.atendido) return alert("Complete el cierre del reporte.");
+    if (!form.asunto_finalizado || !form.atendido) return alert("Complete el cierre.");
     const idGenerado = Math.floor(Math.random() * 1000000); 
 
     const enviarPaquete = async (nombreEtapa, asuntoTexto, atendidoTexto, listaArchivos) => {
@@ -172,10 +184,7 @@ function App() {
       fd.append('operador', usuarioGenerado);
       fd.append('centro_trabajo', datosUsuario.centro);
       fd.append('turno', datosUsuario.turno); 
-      
-      if (listaArchivos && listaArchivos.length > 0) {
-        listaArchivos.forEach(file => fd.append('archivos', file));
-      }
+      if (listaArchivos && listaArchivos.length > 0) listaArchivos.forEach(file => fd.append('archivos', file));
       return enviarReporte(fd); 
     };
 
@@ -184,50 +193,35 @@ function App() {
       if(form.asunto_desarrollo) await enviarPaquete('DESARROLLO', form.asunto_desarrollo, '', archivos.desarrollo);
       if(form.asunto_finalizado) await enviarPaquete('FINALIZADO', form.asunto_finalizado, form.atendido, archivos.finalizado);
       
-      alert(`Reporte consolidado enviado. ID: ${idGenerado}`);
+      const urlBase = window.location.origin.includes('localhost') ? 'http://localhost:3000' : window.location.origin;
+      const socketBot = io(urlBase);
+      socketBot.emit('enviar_mensaje', { remitente: 'SISTEMA', contenido: `Incidencia #${idGenerado} consolidada.`, es_sistema: true });
+      setTimeout(() => socketBot.disconnect(), 1000);
 
-      try {
-        const urlBase = window.location.origin.includes('localhost') ? 'http://localhost:3000' : window.location.origin;
-        const socketBot = io(urlBase);
-        socketBot.emit('enviar_mensaje', {
-          remitente: 'SISTEMA SISIFO',
-          contenido: `📢 El operador ${usuarioGenerado} consolidó el Informe #${idGenerado} (Cam: ${form.camara} | Zona: ${form.zona}).`,
-          es_sistema: true
-        });
-        setTimeout(() => socketBot.disconnect(), 1500);
-      } catch(err) {
-        console.error("Error del bot de sistema:", err);
-      }
-
+      alert(`Reporte enviado: #${idGenerado}`);
       setEtapa('INICIO');
       setForm({ camara: '', zona: '', roper: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
       setArchivos({ inicio: [], desarrollo: [], finalizado: [] });
       setVistasPrevias({ inicio: [], desarrollo: [], finalizado: [] });
-      setEdicionCampos(false);
     } catch (error) {
-      console.error(error); 
-      alert('Error al despachar el informe.');
+      console.error("Error al consolidar:", error);
+      alert('Error al enviar.');
     }
   };
 
   if (!sesionActiva) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', fontFamily: 'Arial', backgroundColor: '#f4f4f9', padding: '20px' }}>
-        
-        {/* CONTENEDOR PRINCIPAL DIVIDIDO EN DOS MITADES */}
-        <div style={{ background: 'white', padding: '40px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'row', gap: '40px', alignItems: 'center', maxWidth: '850px' }}>
-          
-          {/* LADO IZQUIERDO: SECCIÓN DE SEGURIDAD (QR ESTÁTICO) */}
-          <div style={{ width: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: '2px solid #eee', paddingRight: '40px' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f4f4f9', padding: '20px' }}>
+        <div style={{ background: 'white', padding: '40px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', display: 'flex', gap: '40px', alignItems: 'center', maxWidth: '850px' }}>
+          <div style={{ width: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', borderRight: '2px solid #eee', paddingRight: '40px' }}>
             <div style={{ background: '#e8f4fd', color: '#0056b3', padding: '15px', borderRadius: '50%', marginBottom: '15px' }}>
               <Shield size={40} />
             </div>
             <h3 style={{ margin: '0 0 10px 0', color: '#333', textAlign: 'center' }}>Seguridad OTP</h3>
-            
             {qrCode ? (
               <>
                 <div style={{ background: '#fff', padding: '10px', borderRadius: '10px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '15px' }}>
-                  <img src={qrCode} style={{ width: '180px', display: 'block' }} alt="QR Code OTP" />
+                  <img src={qrCode} style={{ width: '180px', display: 'block' }} alt="QR" />
                 </div>
                 <p style={{ fontSize: '13px', color: '#666', textAlign: 'center', lineHeight: '1.4', margin: 0 }}>
                   Escanea este código con <b>Google Authenticator</b> para vincular tu dispositivo.
@@ -235,15 +229,12 @@ function App() {
               </>
             ) : (
               <div style={{ height: '200px', width: '200px', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed #ccc', borderRadius: '10px', color: '#888', fontSize: '12px', textAlign: 'center', padding: '20px', margin: '10px 0' }}>
-                El código de vinculación aparecerá aquí si tu cuenta es nueva o requiere configuración.
+                El código aparecerá aquí automáticamente al ingresar tu nombre.
               </div>
             )}
           </div>
-
-          {/* LADO DERECHO: FORMULARIO DE ACCESO */}
           <div style={{ width: '380px' }}>
             <h2 style={{ textAlign: 'center', marginBottom: '25px', color: '#333' }}>{modoRegistro ? 'NUEVO OPERADOR' : 'SISIFO - ACCESO'}</h2>
-            
             <form onSubmit={modoRegistro ? handleRegistro : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <div style={{ flex: 1 }}>
@@ -255,19 +246,17 @@ function App() {
                   <input type="text" value={datosUsuario.apellido} style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, apellido: e.target.value.toUpperCase()})} required />
                 </div>
               </div>
-              
               {!modoRegistro ? (
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Shield size={12}/> Código OTP (Autenticador)</label>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Shield size={12}/> Código OTP</label>
                   <input type="text" value={token} style={{ width: '100%', padding: '12px', boxSizing: 'border-box', letterSpacing: '4px', textAlign: 'center', fontSize: '18px', fontWeight: 'bold', border: '2px solid #0056b3', borderRadius: '4px', background: '#f4f9ff' }} onChange={e => setToken(e.target.value)} required placeholder="123456" maxLength={6} />
                 </div>
               ) : (
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Shield size={12}/> Contraseña (DNI)</label>
-                  <input type="password" style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, dni: e.target.value})} required maxLength={8} />
+                  <input type="password" style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, dni: e.target.value})} required />
                 </div>
               )}
-
               {!modoRegistro && (
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <div style={{ flex: 1 }}>
@@ -284,7 +273,6 @@ function App() {
                   </div>
                 </div>
               )}
-
               <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                 {!modoRegistro ? (
                   <>
@@ -305,12 +293,8 @@ function App() {
     );
   }
 
-  // VISTA PRINCIPAL CLÁSICA (CENTRALIZADA)
   return (
     <div style={{ padding: '20px', maxWidth: '850px', margin: 'auto', fontFamily: 'Arial' }}>
-      
-      {/* {sesionActiva && <ChatPanel usuarioLogueado={usuarioGenerado} />} */}
-
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#333', color: 'white', padding: '10px', borderRadius: '5px', marginBottom: '10px', fontSize: '14px' }}>
         <div>
           <span style={{ marginRight: '15px' }}>Usuario: <b>{usuarioGenerado}</b></span>

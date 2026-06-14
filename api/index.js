@@ -59,16 +59,34 @@ app.post('/api/usuarios', async (req, res) => {
   }
 });
 
-// NUEVO: GENERAR QR PARA USUARIO (CONFIGURACIÓN INICIAL)
+// REEMPLAZA ESTE ENDPOINT EN TU INDEX.JS
 app.post('/api/otp/setup', async (req, res) => {
   const { usuario } = req.body;
   try {
-    const secret = speakeasy.generateSecret({ name: `SISIFO:${usuario}` });
-    await db.query('UPDATE usuarios SET otp_secret = $1 WHERE usuario = $2', [secret.base32, usuario]);
-    qrcode.toDataURL(secret.otpauth_url, (err, data_url) => {
-      res.json({ qr: data_url, secret: secret.base32 });
-    });
-  } catch (err) { res.status(500).send('Error configurando OTP.'); }
+    // 1. Verificamos si el usuario ya tiene un secreto asignado
+    const result = await db.query('SELECT otp_secret FROM usuarios WHERE usuario = $1', [usuario]);
+    
+    if (result.rows.length > 0 && result.rows[0].otp_secret) {
+      // Si ya tiene secreto, generamos el QR usando esa misma llave fija
+      const existingSecret = result.rows[0].otp_secret;
+      const otpauth_url = `otpauth://totp/SISIFO:${usuario}?secret=${existingSecret}&issuer=SISIFO`;
+      
+      qrcode.toDataURL(otpauth_url, (err, data_url) => {
+        return res.json({ qr: data_url, secret: existingSecret });
+      });
+    } else {
+      // Si la cuenta es nueva y no tiene nada (NULL), creamos uno desde cero
+      const secret = speakeasy.generateSecret({ name: `SISIFO:${usuario}` });
+      await db.query('UPDATE usuarios SET otp_secret = $1 WHERE usuario = $2', [secret.base32, usuario]);
+      
+      qrcode.toDataURL(secret.otpauth_url, (err, data_url) => {
+        return res.json({ qr: data_url, secret: secret.base32 });
+      });
+    }
+  } catch (err) { 
+    console.error(err);
+    res.status(500).send('Error configurando OTP.'); 
+  }
 });
 
 // LOGIN MODIFICADO (USA TOKEN EN VEZ DE DNI)
@@ -82,12 +100,12 @@ app.post('/api/login', async (req, res) => {
     if (user.estado === 'BLOQUEADO') return res.status(403).send(`ACCESO DENEGADO. Motivo: ${user.motivo_estado}`);
     if (!user.otp_secret) return res.status(400).send('Usuario no configurado. Contacte a Call Center.');
 
-    const verified = speakeasy.totp.verify({
-      secret: user.otp_secret,
-      encoding: 'base32',
-      token: token,
-      window: 1
-    });
+ const verified = speakeasy.totp.verify({
+  secret: user.otp_secret,
+  encoding: 'base32',
+  token: token,
+  window: 2 // <--- CAMBIA ESTO A 2 (permite desfase de tiempo de hasta 1 minuto)
+});
 
     if (verified) {
       res.json({ success: true, usuario: user.usuario, cargo: user.cargo });
