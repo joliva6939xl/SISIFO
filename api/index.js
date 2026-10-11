@@ -59,26 +59,21 @@ app.post('/api/usuarios', async (req, res) => {
   }
 });
 
-// REEMPLAZA ESTE ENDPOINT EN TU INDEX.JS
+// CONFIGURAR OTP
 app.post('/api/otp/setup', async (req, res) => {
   const { usuario } = req.body;
   try {
-    // 1. Verificamos si el usuario ya tiene un secreto asignado
     const result = await db.query('SELECT otp_secret FROM usuarios WHERE usuario = $1', [usuario]);
     
     if (result.rows.length > 0 && result.rows[0].otp_secret) {
-      // Si ya tiene secreto, generamos el QR usando esa misma llave fija
       const existingSecret = result.rows[0].otp_secret;
       const otpauth_url = `otpauth://totp/SISIFO:${usuario}?secret=${existingSecret}&issuer=SISIFO`;
-      
       qrcode.toDataURL(otpauth_url, (err, data_url) => {
         return res.json({ qr: data_url, secret: existingSecret });
       });
     } else {
-      // Si la cuenta es nueva y no tiene nada (NULL), creamos uno desde cero
       const secret = speakeasy.generateSecret({ name: `SISIFO:${usuario}` });
       await db.query('UPDATE usuarios SET otp_secret = $1 WHERE usuario = $2', [secret.base32, usuario]);
-      
       qrcode.toDataURL(secret.otpauth_url, (err, data_url) => {
         return res.json({ qr: data_url, secret: secret.base32 });
       });
@@ -89,7 +84,7 @@ app.post('/api/otp/setup', async (req, res) => {
   }
 });
 
-// LOGIN MODIFICADO (USA TOKEN EN VEZ DE DNI)
+// LOGIN
 app.post('/api/login', async (req, res) => {
   const { usuario, token } = req.body;
   try {
@@ -100,26 +95,30 @@ app.post('/api/login', async (req, res) => {
     if (user.estado === 'BLOQUEADO') return res.status(403).send(`ACCESO DENEGADO. Motivo: ${user.motivo_estado}`);
     if (!user.otp_secret) return res.status(400).send('Usuario no configurado. Contacte a Call Center.');
 
- const verified = speakeasy.totp.verify({
-  secret: user.otp_secret,
-  encoding: 'base32',
-  token: token,
-  window: 2 // <--- CAMBIA ESTO A 2 (permite desfase de tiempo de hasta 1 minuto)
-});
+    const verified = speakeasy.totp.verify({
+      secret: user.otp_secret,
+      encoding: 'base32',
+      token: token,
+      window: 2
+    });
 
     if (verified) {
       res.json({ success: true, usuario: user.usuario, cargo: user.cargo });
     } else {
       res.status(401).send('Código incorrecto o expirado.');
     }
-  } catch (err) { res.status(500).send('Error en el servidor al autenticar.'); }
+  } catch (err) { 
+    res.status(500).send('Error en el servidor al autenticar.'); 
+  }
 });
 
 app.get('/api/usuarios', async (req, res) => {
   try {
     const result = await db.query('SELECT id, nombre, apellido, usuario, cargo, estado, motivo_estado FROM usuarios ORDER BY cargo ASC, nombre ASC');
     res.json(result.rows);
-  } catch (err) { res.status(500).send('Error al obtener la lista de usuarios.'); }
+  } catch (err) { 
+    res.status(500).send('Error al obtener la lista de usuarios.'); 
+  }
 });
 
 app.put('/api/usuarios/:id/estado', async (req, res) => {
@@ -128,28 +127,36 @@ app.put('/api/usuarios/:id/estado', async (req, res) => {
   try {
     await db.query('UPDATE usuarios SET estado = $1, motivo_estado = $2 WHERE id = $3', [estado, motivo, id]);
     res.json({ success: true });
-  } catch (err) { res.status(500).send('Error al actualizar estado.'); }
+  } catch (err) { 
+    res.status(500).send('Error al actualizar estado.'); 
+  }
 });
 
 app.delete('/api/usuarios/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM usuarios WHERE id = $1', [req.params.id]);
     res.json({ success: true });
-  } catch (err) { res.status(500).send('Error al eliminar usuario.'); }
+  } catch (err) { 
+    res.status(500).send('Error al eliminar usuario.'); 
+  }
 });
 
 app.get('/api/reportes_globales', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, id_incidencia, etapa, camara, zona, roper, asunto, atendido, foto_video, turno, operador, centro_trabajo, TO_CHAR(creado_el, 'DD/MM/YYYY HH24:MI') as fecha FROM reportes_monitoreo ORDER BY creado_el DESC`);
+    const result = await db.query(`SELECT id, id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, turno, operador, centro_trabajo, TO_CHAR(creado_el, 'DD/MM/YYYY HH24:MI') as fecha FROM reportes_monitoreo ORDER BY creado_el DESC`);
     res.json(result.rows);
-  } catch (err) { res.status(500).send('Error al leer el almacén global.'); }
+  } catch (err) { 
+    res.status(500).send('Error al leer el almacén global.'); 
+  }
 });
 
 app.get('/api/reportes/:operador', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, id_incidencia, etapa, camara, zona, roper, asunto, atendido, foto_video, turno, TO_CHAR(creado_el, 'DD/MM/YYYY HH24:MI') as fecha FROM reportes_monitoreo WHERE operador = $1 ORDER BY creado_el DESC`, [req.params.operador]);
+    const result = await db.query(`SELECT id, id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, turno, TO_CHAR(creado_el, 'DD/MM/YYYY HH24:MI') as fecha FROM reportes_monitoreo WHERE operador = $1 ORDER BY creado_el DESC`, [req.params.operador]);
     res.json(result.rows);
-  } catch (err) { res.status(500).send('Error al leer almacén del operador.'); }
+  } catch (err) { 
+    res.status(500).send('Error al leer almacén del operador.'); 
+  }
 });
 
 app.post('/api/exportar', exportController.descargarReporte);
@@ -167,24 +174,31 @@ app.post('/api/salas', async (req, res) => {
       [nombre_sala.toUpperCase(), tipoSala, creado_por]
     );
     res.json({ success: true, sala: result.rows[0] });
-  } catch (err) { res.status(500).send('Error interno al crear sala.'); }
+  } catch (err) { 
+    res.status(500).send('Error interno al crear sala.'); 
+  }
 });
 
 app.get('/api/salas', async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM chats_salas ORDER BY id_sala ASC");
     res.json(result.rows);
-  } catch (err) { res.status(500).send('Error al obtener las salas.'); }
+  } catch (err) { 
+    res.status(500).send('Error al obtener las salas.'); 
+  }
 });
 
 app.put('/api/salas/:id', async (req, res) => {
   try {
     await db.query("UPDATE chats_salas SET nombre_sala = $1 WHERE id_sala = $2", [req.body.nombre_sala.toUpperCase(), req.params.id]);
     res.sendStatus(200);
-  } catch (err) { res.status(500).send(err.message); }
+  } catch (err) { 
+    res.status(500).send(err.message); 
+  }
 });
 
 app.post('/api/salas/vincular', async (req, res) => {
+  // TODO: Implementar INSERT real en chats_participantes
   res.json({ success: true, mensaje: `Usuario vinculado` });
 });
 
@@ -193,14 +207,18 @@ app.delete('/api/salas/:id', async (req, res) => {
     try { await db.query("DELETE FROM chats_mensajes WHERE id_sala = $1", [req.params.id]); } catch (e) { }
     await db.query("DELETE FROM chats_salas WHERE id_sala = $1", [req.params.id]);
     res.json({ success: true });
-  } catch (err) { res.status(500).send('Error interno en la BD.'); }
+  } catch (err) { 
+    res.status(500).send('Error interno en la BD.'); 
+  }
 });
 
 app.get('/api/salas/:id_sala/mensajes', async (req, res) => {
   try {
     const result = await db.query("SELECT * FROM chats_mensajes WHERE id_sala = $1 ORDER BY id_mensaje ASC", [req.params.id_sala]);
     res.json(result.rows);
-  } catch (err) { res.json([]); }
+  } catch (err) { 
+    res.json([]); 
+  }
 });
 
 app.delete('/api/mensajes/:id', async (req, res) => {
@@ -211,40 +229,51 @@ app.delete('/api/mensajes/:id', async (req, res) => {
       await db.query("UPDATE chats_mensajes SET contenido = $1 WHERE id_mensaje = $2", [`MENSAJE BORRADO POR: ${req.body.usuario}`, req.params.id]);
     }
     res.json({ success: true });
-  } catch (err) { res.status(500).send('Error'); }
+  } catch (err) { 
+    res.status(500).send('Error'); 
+  }
 });
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }, maxHttpBufferSize: 1e8 });
 
+// ==========================================================
+// RUTA DE REPORTES CORREGIDA Y LIMPIA (SIN DUPLICADOS)
+// ==========================================================
 app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
-  const { id_incidencia, etapa, camara, zona, roper, asunto, atendido, operador, centro_trabajo, turno } = req.body;
+  const { id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, operador, centro_trabajo, turno } = req.body;
   const rutas_archivos = req.files && req.files.length > 0 ? JSON.stringify(req.files.map(file => `/uploads/${file.filename}`)) : null;
   
   try {
     const result = await db.query(
-      'INSERT INTO reportes_monitoreo (id_incidencia, etapa, camara, zona, roper, asunto, atendido, foto_video, operador, centro_trabajo, turno) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
-      [id_incidencia, etapa, camara, zona, roper, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno]
+      'INSERT INTO reportes_monitoreo (id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, operador, centro_trabajo, turno) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *',
+      [id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno]
     );
 
     if (etapa && etapa.toUpperCase() === 'FINALIZADO') {
       try {
-         const salaReportes = await db.query("SELECT id_sala FROM chats_salas WHERE nombre_sala = 'REPORTE DE LLAMADAS :C' LIMIT 1");
-         if (salaReportes.rows.length > 0) {
-             const idSalaDestino = salaReportes.rows[0].id_sala;
-             const mensajeBot = `USUARIO ${operador.toUpperCase()} GENERO INCIDENCIA #${id_incidencia}`;
-             const msgInsertado = await db.query(
-                "INSERT INTO chats_mensajes (id_sala, remitente, contenido) VALUES ($1, $2, $3) RETURNING *",
-                [idSalaDestino, 'BOT_SISIFO', mensajeBot]
-             );
-             io.emit('nuevo_mensaje', msgInsertado.rows[0]);
-         }
-      } catch(errBot) { console.error("Error al disparar bot de incidencia:", errBot); }
+        const salaReportes = await db.query("SELECT id_sala FROM chats_salas WHERE nombre_sala = 'REPORTE DE LLAMADAS :C' LIMIT 1");
+        if (salaReportes.rows.length > 0) {
+          const idSalaDestino = salaReportes.rows[0].id_sala;
+          const mensajeBot = `USUARIO ${operador.toUpperCase()} GENERO INCIDENCIA #${id_incidencia} - ${categoria || 'SIN CATEGORIA'} - ${incidencia || 'SIN INCIDENCIA'}`;
+          const msgInsertado = await db.query(
+            "INSERT INTO chats_mensajes (id_sala, remitente, contenido) VALUES ($1, $2, $3) RETURNING *",
+            [idSalaDestino, 'BOT_SISIFO', mensajeBot]
+          );
+          io.emit('nuevo_mensaje', msgInsertado.rows[0]);
+        }
+      } catch(errBot) { 
+        console.error("Error al disparar bot de incidencia:", errBot); 
+      }
     }
 
     res.json(result.rows[0]);
-  } catch (err) { res.status(500).send('Error al guardar reporte.'); }
+  } catch (err) { 
+    console.error("Error en /api/reportes:", err);
+    res.status(500).send('Error al guardar reporte.'); 
+  }
 });
+// ==========================================================
 
 require('./sockets')(io);
 

@@ -1,143 +1,35 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Camera, Send, User, Shield, MapPin, LogIn, LogOut, ClipboardPaste, ArrowRight, ArrowLeft, Clock, Edit } from 'lucide-react';
-import { X as CloseIcon } from 'lucide-react';
-import { io } from 'socket.io-client'; 
-
-import { enviarReporte, registrarUsuario } from './api/api';
-import Almacen from './components/Almacen'; 
-import PanelAdministrador from './components/PanelAdministrador'; 
+import { useState } from 'react';
+import { LogOut } from 'lucide-react';
+import LoginScreen from './components/LoginScreen';
+import FormularioReporte from './components/FormularioReporte';
+import Almacen from './components/Almacen';
+import PanelAdministrador from './components/PanelAdministrador';
 
 function App() {
-  // Inicialización inteligente para persistencia de sesión
   const [sesionActiva, setSesionActiva] = useState(() => localStorage.getItem('sisifo_user') !== null);
-  const [modoRegistro, setModoRegistro] = useState(false); 
-  const [token, setToken] = useState(''); 
-  const [qrCode, setQrCode] = useState(null);
-
-  const [datosUsuario, setDatosUsuario] = useState({ nombre: '', apellido: '', dni: '', centro: 'BASE CENTRAL', turno: 'MAÑANA' });
   const [usuarioGenerado, setUsuarioGenerado] = useState(() => localStorage.getItem('sisifo_user') || '');
-  const [cargoUsuario, setCargoUsuario] = useState(() => localStorage.getItem('sisifo_cargo') || ''); 
-  
-  // SOLUCIÓN AL PROBLEMA DE REDIRECCIÓN: Inicialización inmediata del perfil
+  const [cargoUsuario, setCargoUsuario] = useState(() => localStorage.getItem('sisifo_cargo') || '');
   const [vistaActual, setVistaActual] = useState(() => {
     const cargo = localStorage.getItem('sisifo_cargo');
     if (cargo === 'ADMINISTRADOR') return 'ADMINISTRADOR';
     if (cargo === 'ANALISTA') return 'ALMACEN';
     return 'FORMULARIO';
   });
+  const [datosSesion, setDatosSesion] = useState({ centro: 'BASE CENTRAL', turno: 'MAÑANA' });
 
-  const [etapa, setEtapa] = useState('INICIO'); 
-  const [edicionCampos, setEdicionCampos] = useState(false);
-
-  const [form, setForm] = useState({ camara: '', zona: '', roper: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
-  const [archivos, setArchivos] = useState({ inicio: [], desarrollo: [], finalizado: [] });
-  const [vistasPrevias, setVistasPrevias] = useState({ inicio: [], desarrollo: [], finalizado: [] });
-
-  // 1. CARGAR QR AUTOMÁTICO
-  useEffect(() => {
-    const cargarQRAutomatico = async () => {
-      if (datosUsuario.nombre && datosUsuario.apellido) {
-        const userEsperado = datosUsuario.nombre.charAt(0).toLowerCase() + datosUsuario.apellido.toLowerCase().replace(/\s/g, '');
-        try {
-          const qrRes = await axios.post('/api/otp/setup', { usuario: userEsperado });
-          setQrCode(qrRes.data.qr);
-        } catch (err) {
-          console.error("Error al cargar QR:", err);
-        }
-      } else {
-        setQrCode(null);
-      }
-    };
-    cargarQRAutomatico();
-  }, [datosUsuario.nombre, datosUsuario.apellido]);
-
-  // 2. LÓGICA DE IMÁGENES
-  useEffect(() => {
-    const handlePasteGlobal = (e) => {
-      if (!sesionActiva || vistaActual !== 'FORMULARIO') return;
-      const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
-      if (!items) return;
-      let pegoImagen = false;
-      const currEtapa = etapa.toLowerCase();
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-          pegoImagen = true;
-          const blob = items[i].getAsFile();
-          if (!blob) continue;
-          const file = new File([blob], `evidencia_${currEtapa}_${Date.now()}_${i}.png`, { type: blob.type });
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            setArchivos(prev => ({...prev, [currEtapa]: [...prev[currEtapa], file]}));
-            setVistasPrevias(prev => ({...prev, [currEtapa]: [...prev[currEtapa], reader.result]}));
-          };
-          reader.readAsDataURL(file);
-        }
-      }
-      if (pegoImagen) e.preventDefault();
-    };
-    document.addEventListener('paste', handlePasteGlobal);
-    return () => document.removeEventListener('paste', handlePasteGlobal);
-  }, [etapa, sesionActiva, vistaActual]); 
-
-  const handleFileUpload = (e) => {
-    const files = Array.from(e.target.files);
-    const currEtapa = etapa.toLowerCase();
-    files.forEach((file) => {
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setArchivos(prev => ({...prev, [currEtapa]: [...prev[currEtapa], file]}));
-          setVistasPrevias(prev => ({...prev, [currEtapa]: [...prev[currEtapa], reader.result]}));
-        };
-        reader.readAsDataURL(file);
-      }
-    });
-  };
-
-  const eliminarFoto = (index) => {
-    const currEtapa = etapa.toLowerCase();
-    setArchivos(prev => ({ ...prev, [currEtapa]: prev[currEtapa].filter((_, i) => i !== index) }));
-    setVistasPrevias(prev => ({ ...prev, [currEtapa]: prev[currEtapa].filter((_, i) => i !== index) }));
-  };
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (!datosUsuario.nombre || !datosUsuario.apellido || !token) return alert("Complete los datos y el código OTP.");
-    const userEsperado = datosUsuario.nombre.charAt(0).toLowerCase() + datosUsuario.apellido.toLowerCase().replace(/\s/g, ''); 
-    try {
-      const respuesta = await axios.post('/api/login', { usuario: userEsperado, token: token });
-      if (respuesta.data.success) {
-        const cargoReal = respuesta.data.cargo ? respuesta.data.cargo.trim().toUpperCase() : 'OPERADOR';
-        localStorage.setItem('sisifo_user', respuesta.data.usuario);
-        localStorage.setItem('sisifo_cargo', cargoReal);
-        setUsuarioGenerado(respuesta.data.usuario);
-        setCargoUsuario(cargoReal); 
-        
-        // Determinar vista inicial tras login
-        if (cargoReal === 'ADMINISTRADOR') setVistaActual('ADMINISTRADOR');
-        else if (cargoReal === 'ANALISTA') setVistaActual('ALMACEN');
-        else setVistaActual('FORMULARIO');
-        
-        setSesionActiva(true);
-      }
-    } catch (error) {
-      alert("Atención: " + (error.response?.data || "Error al intentar ingresar."));
-    }
-  };
-
-  const handleRegistro = async (e) => {
-    e.preventDefault();
-    if (!datosUsuario.nombre || !datosUsuario.apellido || !datosUsuario.dni) return alert("Complete los campos.");
-    try {
-      const respuesta = await registrarUsuario({ nombre: datosUsuario.nombre, apellido: datosUsuario.apellido, dni: datosUsuario.dni, cargo: 'OPERADOR' });
-      if (respuesta.data.success) {
-        alert(`Operador creado: ${respuesta.data.usuario}`);
-        setModoRegistro(false); 
-      }
-    } catch (error) {
-      alert(error.response?.data || "Error al registrar.");
-    }
+  const handleLoginSuccess = (usuario, cargo, centro, turno) => {
+    const cargoReal = cargo ? cargo.trim().toUpperCase() : 'OPERADOR';
+    localStorage.setItem('sisifo_user', usuario);
+    localStorage.setItem('sisifo_cargo', cargoReal);
+    setUsuarioGenerado(usuario);
+    setCargoUsuario(cargoReal);
+    setDatosSesion({ centro, turno });
+    
+    if (cargoReal === 'ADMINISTRADOR') setVistaActual('ADMINISTRADOR');
+    else if (cargoReal === 'ANALISTA') setVistaActual('ALMACEN');
+    else setVistaActual('FORMULARIO');
+    
+    setSesionActiva(true);
   };
 
   const handleLogout = () => {
@@ -145,164 +37,25 @@ function App() {
       localStorage.removeItem('sisifo_user');
       localStorage.removeItem('sisifo_cargo');
       setSesionActiva(false);
-      window.location.reload(); 
-    }
-  };
-
-  const avanzarEtapa = () => {
-    if (etapa === 'INICIO') {
-      if (!form.camara || !form.zona || !form.roper || !form.asunto_inicio) return alert("Complete datos iniciales.");
-      setEtapa('DESARROLLO');
-      setEdicionCampos(false); 
-    } else if (etapa === 'DESARROLLO') {
-      if (!form.asunto_desarrollo) return alert("Complete desarrollo.");
-      setEtapa('FINALIZADO');
-      setEdicionCampos(false);
-    }
-  };
-
-  const retrocederEtapa = () => {
-    if (etapa === 'FINALIZADO') setEtapa('DESARROLLO');
-    else if (etapa === 'DESARROLLO') setEtapa('INICIO');
-    setEdicionCampos(false);
-  };
-
-  const handleSubmitConsolidado = async (e) => {
-    e.preventDefault();
-    if (!form.asunto_finalizado || !form.atendido) return alert("Complete el cierre.");
-    const idGenerado = Math.floor(Math.random() * 1000000); 
-
-    const enviarPaquete = async (nombreEtapa, asuntoTexto, atendidoTexto, listaArchivos) => {
-      const fd = new FormData();
-      fd.append('id_incidencia', idGenerado);
-      fd.append('etapa', nombreEtapa);
-      fd.append('camara', form.camara);
-      fd.append('zona', form.zona);
-      fd.append('roper', form.roper);
-      fd.append('asunto', asuntoTexto);
-      fd.append('atendido', atendidoTexto);
-      fd.append('operador', usuarioGenerado);
-      fd.append('centro_trabajo', datosUsuario.centro);
-      fd.append('turno', datosUsuario.turno); 
-      if (listaArchivos && listaArchivos.length > 0) listaArchivos.forEach(file => fd.append('archivos', file));
-      return enviarReporte(fd); 
-    };
-
-    try {
-      if(form.asunto_inicio) await enviarPaquete('INICIO', form.asunto_inicio, '', archivos.inicio);
-      if(form.asunto_desarrollo) await enviarPaquete('DESARROLLO', form.asunto_desarrollo, '', archivos.desarrollo);
-      if(form.asunto_finalizado) await enviarPaquete('FINALIZADO', form.asunto_finalizado, form.atendido, archivos.finalizado);
-      
-      const urlBase = window.location.origin.includes('localhost') ? 'http://localhost:3000' : window.location.origin;
-      const socketBot = io(urlBase);
-      socketBot.emit('enviar_mensaje', { remitente: 'SISTEMA', contenido: `Incidencia #${idGenerado} consolidada.`, es_sistema: true });
-      setTimeout(() => socketBot.disconnect(), 1000);
-
-      alert(`Reporte enviado: #${idGenerado}`);
-      setEtapa('INICIO');
-      setForm({ camara: '', zona: '', roper: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
-      setArchivos({ inicio: [], desarrollo: [], finalizado: [] });
-      setVistasPrevias({ inicio: [], desarrollo: [], finalizado: [] });
-    } catch (error) {
-      console.error("Error al consolidar:", error);
-      alert('Error al enviar.');
+      window.location.reload();
     }
   };
 
   if (!sesionActiva) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f4f4f9', padding: '20px' }}>
-        <div style={{ background: 'white', padding: '40px', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', display: 'flex', gap: '40px', alignItems: 'center', maxWidth: '850px' }}>
-          <div style={{ width: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', borderRight: '2px solid #eee', paddingRight: '40px' }}>
-            <div style={{ background: '#e8f4fd', color: '#0056b3', padding: '15px', borderRadius: '50%', marginBottom: '15px' }}>
-              <Shield size={40} />
-            </div>
-            <h3 style={{ margin: '0 0 10px 0', color: '#333', textAlign: 'center' }}>Seguridad OTP</h3>
-            {qrCode ? (
-              <>
-                <div style={{ background: '#fff', padding: '10px', borderRadius: '10px', border: '1px solid #ddd', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '15px' }}>
-                  <img src={qrCode} style={{ width: '180px', display: 'block' }} alt="QR" />
-                </div>
-                <p style={{ fontSize: '13px', color: '#666', textAlign: 'center', lineHeight: '1.4', margin: 0 }}>
-                  Escanea este código con <b>Google Authenticator</b> para vincular tu dispositivo.
-                </p>
-              </>
-            ) : (
-              <div style={{ height: '200px', width: '200px', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed #ccc', borderRadius: '10px', color: '#888', fontSize: '12px', textAlign: 'center', padding: '20px', margin: '10px 0' }}>
-                El código aparecerá aquí automáticamente al ingresar tu nombre.
-              </div>
-            )}
-          </div>
-          <div style={{ width: '380px' }}>
-            <h2 style={{ textAlign: 'center', marginBottom: '25px', color: '#333' }}>{modoRegistro ? 'NUEVO OPERADOR' : 'SISIFO - ACCESO'}</h2>
-            <form onSubmit={modoRegistro ? handleRegistro : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><User size={12}/> Nombre</label>
-                  <input type="text" value={datosUsuario.nombre} style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, nombre: e.target.value.toUpperCase()})} required />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>Apellido</label>
-                  <input type="text" value={datosUsuario.apellido} style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, apellido: e.target.value.toUpperCase()})} required />
-                </div>
-              </div>
-              {!modoRegistro ? (
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Shield size={12}/> Código OTP</label>
-                  <input type="text" value={token} style={{ width: '100%', padding: '12px', boxSizing: 'border-box', letterSpacing: '4px', textAlign: 'center', fontSize: '18px', fontWeight: 'bold', border: '2px solid #0056b3', borderRadius: '4px', background: '#f4f9ff' }} onChange={e => setToken(e.target.value)} required placeholder="123456" maxLength={6} />
-                </div>
-              ) : (
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Shield size={12}/> Contraseña (DNI)</label>
-                  <input type="password" style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, dni: e.target.value})} required />
-                </div>
-              )}
-              {!modoRegistro && (
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold' }}><MapPin size={12}/> Base</label>
-                    <select style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, centro: e.target.value})}>
-                      <option value="BASE CENTRAL">BASE CENTRAL</option><option value="CEMO NORTE">CEMO NORTE</option><option value="CEMO SUR">CEMO SUR</option><option value="CEMO CENTRO">CEMO CENTRO</option>
-                    </select>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold' }}><Clock size={12}/> Turno</label>
-                    <select style={{ width: '100%', padding: '10px', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px' }} onChange={e => setDatosUsuario({...datosUsuario, turno: e.target.value})}>
-                      <option value="MAÑANA">MAÑANA</option><option value="TARDE">TARDE</option><option value="NOCHE">NOCHE</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                {!modoRegistro ? (
-                  <>
-                    <button type="submit" style={{ flex: 2, background: '#0056b3', color: 'white', padding: '12px', border: 'none', borderRadius: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', fontWeight: 'bold', fontSize: '14px' }}>INGRESAR <LogIn size={16} /></button>
-                    <button type="button" onClick={() => setModoRegistro(true)} style={{ flex: 1, background: '#6c757d', color: 'white', padding: '12px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Registrar</button>
-                  </>
-                ) : (
-                  <>
-                    <button type="submit" style={{ flex: 2, background: '#28a745', color: 'white', padding: '12px', border: 'none', borderRadius: '5px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', fontWeight: 'bold', fontSize: '14px' }}>CREAR OPERADOR</button>
-                    <button type="button" onClick={() => setModoRegistro(false)} style={{ flex: 1, background: '#dc3545', color: 'white', padding: '12px', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Cancelar</button>
-                  </>
-                )}
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
     <div style={{ padding: '20px', maxWidth: '850px', margin: 'auto', fontFamily: 'Arial' }}>
+      {/* HEADER GLOBAL */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#333', color: 'white', padding: '10px', borderRadius: '5px', marginBottom: '10px', fontSize: '14px' }}>
         <div>
           <span style={{ marginRight: '15px' }}>Usuario: <b>{usuarioGenerado}</b></span>
           <span style={{ marginRight: '15px', color: cargoUsuario === 'ANALISTA' ? '#8df' : (cargoUsuario === 'ADMINISTRADOR' ? '#ff9900' : '#28a745'), fontSize: '12px', border: `1px solid ${cargoUsuario === 'ANALISTA' ? '#8df' : (cargoUsuario === 'ADMINISTRADOR' ? '#ff9900' : '#28a745')}`, padding: '2px 5px', borderRadius: '3px' }}>{cargoUsuario}</span>
           {cargoUsuario !== 'ADMINISTRADOR' && (
             <>
-              <span style={{ marginRight: '15px' }}>Base: <b>{datosUsuario.centro}</b></span>
-              <span style={{ color: '#ffc107' }}>Turno: <b>{datosUsuario.turno}</b></span>
+              <span style={{ marginRight: '15px' }}>Base: <b>{datosSesion.centro}</b></span>
+              <span style={{ color: '#ffc107' }}>Turno: <b>{datosSesion.turno}</b></span>
             </>
           )}
         </div>
@@ -311,8 +64,9 @@ function App() {
 
       <h2 style={{ textAlign: 'center', marginBottom: '15px' }}>SISTEMA SISIFO - MONITOREO</h2>
 
+      {/* ENRUTAMIENTO DE VISTAS */}
       {vistaActual === 'ADMINISTRADOR' && <PanelAdministrador usuarioLogueado={usuarioGenerado} />}
-
+      
       {vistaActual !== 'ADMINISTRADOR' && (
         <>
           <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', justifyContent: 'center' }}>
@@ -323,72 +77,9 @@ function App() {
               {cargoUsuario === 'ANALISTA' ? 'Panel de Analista Global' : 'Mi Almacén (Historial)'}
             </button>
           </div>
-          
+
           {vistaActual === 'FORMULARIO' ? (
-            <div style={{ background: '#fff', border: '1px solid #ddd', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', maxWidth: '600px', margin: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '20px', fontSize: '12px', fontWeight: 'bold', color: '#666' }}>
-                <span style={{ color: etapa === 'INICIO' ? '#0056b3' : 'inherit' }}>1. INICIO</span><span>→</span>
-                <span style={{ color: etapa === 'DESARROLLO' ? '#0056b3' : 'inherit' }}>2. DESARROLLO</span><span>→</span>
-                <span style={{ color: etapa === 'FINALIZADO' ? '#0056b3' : 'inherit' }}>3. FINALIZADO</span>
-              </div>
-              
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '15px' }}>
-                <h3 style={{ margin: 0 }}>Etapa: {etapa}</h3>
-                {etapa !== 'INICIO' && (
-                  <button type="button" onClick={() => setEdicionCampos(!edicionCampos)} style={{ background: edicionCampos ? '#6c757d' : '#ff9800', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 'bold' }}>
-                    <Edit size={14} /> {edicionCampos ? 'Bloquear Campos' : 'Editar (Seguimiento)'}
-                  </button>
-                )}
-              </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
-                <input style={{ padding: '8px', background: (etapa !== 'INICIO' && !edicionCampos) ? '#f0f0f0' : '#fff', border: '1px solid #ccc', borderRadius: '4px' }} type="text" placeholder="Cámara (Cam)" value={form.camara} onChange={e => setForm({...form, camara: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO' && !edicionCampos} />
-                <input style={{ padding: '8px', background: (etapa !== 'INICIO' && !edicionCampos) ? '#f0f0f0' : '#fff', border: '1px solid #ccc', borderRadius: '4px' }} type="text" placeholder="Zona" value={form.zona} onChange={e => setForm({...form, zona: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO' && !edicionCampos} />
-                <input style={{ padding: '8px', background: (etapa !== 'INICIO' && !edicionCampos) ? '#f0f0f0' : '#fff', border: '1px solid #ccc', borderRadius: '4px' }} type="text" placeholder="ROPER (Encargado del Servicio)" value={form.roper} onChange={e => setForm({...form, roper: e.target.value.toUpperCase()})} disabled={etapa !== 'INICIO' && !edicionCampos} />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {etapa === 'INICIO' && <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Asunto Inicial..." value={form.asunto_inicio} onChange={e => setForm({...form, asunto_inicio: e.target.value.toUpperCase()})} />}
-                {etapa === 'DESARROLLO' && <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Desarrollo de la incidencia..." value={form.asunto_desarrollo} onChange={e => setForm({...form, asunto_desarrollo: e.target.value.toUpperCase()})} />}
-                {etapa === 'FINALIZADO' && (
-                  <>
-                    <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Conclusión / Reporte Final..." value={form.asunto_finalizado} onChange={e => setForm({...form, asunto_finalizado: e.target.value.toUpperCase()})} />
-                    <input style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }} type="text" placeholder="Atendido por..." value={form.atendido} onChange={e => setForm({...form, atendido: e.target.value.toUpperCase()})} />
-                  </>
-                )}
-                
-                <label style={{ cursor: 'pointer', background: '#eaf4ff', padding: '15px', borderRadius: '5px', textAlign: 'center', border: '2px dashed #0056b3', marginTop: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginBottom: '5px', color: '#0056b3' }}><Camera size={20} /> o <ClipboardPaste size={20} /></div>
-                  <span style={{ fontSize: '14px', color: '#333', fontWeight: 'bold' }}>Presiona Ctrl+V en cualquier lugar de esta pantalla para pegar imágenes de Lightshot</span>
-                  <br />
-                  <span style={{ fontSize: '11px', color: '#666' }}>O haz clic aquí para buscar en tus carpetas</span>
-                  <input type="file" multiple hidden onChange={handleFileUpload} />
-                </label>
-
-                {vistasPrevias[etapa.toLowerCase()].length > 0 && (
-                  <div style={{ marginTop: '10px', background: '#f8f9fa', padding: '15px', borderRadius: '5px', border: '1px solid #ddd' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', justifyContent: 'center' }}>
-                      {vistasPrevias[etapa.toLowerCase()].map((vp, index) => (
-                        <div key={index} style={{ position: 'relative', display: 'inline-block' }}>
-                          <img src={vp} alt="Evidencia" style={{ height: '80px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #ccc' }} />
-                          <button type="button" onClick={() => eliminarFoto(index)} title="Borrar foto" style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
-                            <CloseIcon size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #eee' }}>
-                <button type="button" onClick={retrocederEtapa} disabled={etapa === 'INICIO'} style={{ background: etapa === 'INICIO' ? '#ccc' : '#6c757d', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '5px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}><ArrowLeft size={16} /> Atrás</button>
-                {etapa !== 'FINALIZADO' ? (
-                  <button type="button" onClick={avanzarEtapa} style={{ background: '#0056b3', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>Continuar <ArrowRight size={16} /></button>
-                ) : (
-                  <button type="button" onClick={handleSubmitConsolidado} style={{ background: 'green', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>ENVIAR CONSOLIDADO <Send size={16} /></button>
-                )}
-              </div>
-            </div>
+            <FormularioReporte usuarioGenerado={usuarioGenerado} centro={datosSesion.centro} turno={datosSesion.turno} />
           ) : (
             <Almacen usuarioLogueado={usuarioGenerado} cargo={cargoUsuario} />
           )}
