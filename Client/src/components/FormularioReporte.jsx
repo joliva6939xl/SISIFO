@@ -3,9 +3,10 @@ import { Camera, Send, ClipboardPaste, ArrowRight, ArrowLeft, Edit, X as CloseIc
 import { io } from 'socket.io-client';
 import { enviarReporte } from '../api/api';
 import { tipificaciones } from '../data/tipificaciones';
+import AutocompleteCamara from './AutocompleteCamara';
+import AutocompleteAtendido from './AutocompleteAtendido';
 
 export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
-  // ===================== ESTADOS =====================
   const [etapa, setEtapa] = useState('INICIO');
   const [edicionCampos, setEdicionCampos] = useState(false);
   const [form, setForm] = useState({ 
@@ -20,25 +21,22 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
   const [archivos, setArchivos] = useState({ inicio: [], desarrollo: [], finalizado: [] });
   const [vistasPrevias, setVistasPrevias] = useState({ inicio: [], desarrollo: [], finalizado: [] });
 
-  // ===================== REFS (solo declaración) =====================
   const sugerenciasRef = useRef(null);
   const inputBusquedaRef = useRef(null);
   const opcionRef = useRef(null);
   const liveRef = useRef({ enterArmado, etapa, mostrarSugerencias });
   const fnRef = useRef({ avanzar: null, enviar: null });
 
-  // ===================== DERIVADO =====================
   const sugerenciasFiltradas = busquedaIncidencia.trim() === '' 
     ? [] 
     : tipificaciones.filter(t => t.incidencia.toUpperCase().includes(busquedaIncidencia.toUpperCase()));
 
-  // ===================== FUNCIONES (TODAS antes de los useEffect que las usan) =====================
   const seleccionarIncidencia = (tipif) => {
     setForm({ ...form, incidencia: tipif.incidencia, categoria: tipif.categoria, incidencia_otro: '' });
     setBusquedaIncidencia(tipif.incidencia);
     setMostrarSugerencias(false);
     setIndiceSeleccionado(-1);
-    setEnterArmado(true); // elegir incidencia ya deja el botón armado -> 1 Enter menos
+    setEnterArmado(true);
   };
 
   const handleFileUpload = (e) => {
@@ -89,7 +87,6 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     if (e && e.preventDefault) e.preventDefault();
     if (!form.asunto_finalizado || !form.atendido) { setEnterArmado(false); return alert("Complete el cierre."); }
     setEnterArmado(false);
-    
     const idGenerado = Math.floor(Math.random() * 1000000);
     const incidenciaFinal = form.incidencia === 'ESPECIFICAR' ? form.incidencia_otro : form.incidencia;
     
@@ -133,7 +130,6 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     }
   };
 
-  // Solo flechas / Esc / selección con popup. Enter con popup cerrado -> burbujea al global.
   const handleKeyDownBusqueda = (e) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -166,35 +162,30 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
         setIndiceSeleccionado(-1);
         return;
       }
-      // popup cerrado -> no hacemos nada, deja burbujear al global (arma/avanza)
     }
   };
 
-  // ===================== USEEFFECT de sincronización de refs (DESPUÉS de las funciones) =====================
   useEffect(() => {
     liveRef.current = { enterArmado, etapa, mostrarSugerencias };
     fnRef.current = { avanzar: avanzarEtapa, enviar: handleSubmitConsolidado };
   });
 
-  // ===================== USEEFFECT del listener GLOBAL de teclado =====================
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Enter') {
-        if (e.shiftKey) return;                                  // Shift+Enter = newline nativo en textarea
-        if (e.target.tagName === 'BUTTON') return;               // el onClick del botón ya actúa, no duplicar
-        // Si el popup de incidencia está abierto y el foco está en su input,
-        // handleKeyDownBusqueda ya maneja el Enter (selección/cierre). No duplicar.
+        if (e.shiftKey) return;
+        if (e.target.tagName === 'BUTTON') return;
         if (liveRef.current.mostrarSugerencias && e.target === inputBusquedaRef.current) return;
         e.preventDefault();
         if (!liveRef.current.enterArmado) {
-          setEnterArmado(true);                                  // 1er Enter -> arma
+          setEnterArmado(true);
         } else if (liveRef.current.etapa !== 'FINALIZADO') {
-          fnRef.current.avanzar();                               // 2do Enter -> avanza
+          fnRef.current.avanzar();
         } else {
-          fnRef.current.enviar(e);                               // 2do Enter en FINALIZADO -> envía
+          fnRef.current.enviar(e);
         }
       } else if (e.key === 'Escape') {
-        setEnterArmado(false);                                   // Esc cancela desde cualquier lugar
+        setEnterArmado(false);
         setMostrarSugerencias(false);
         setIndiceSeleccionado(-1);
       }
@@ -203,7 +194,6 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // Cerrar popup al hacer clic fuera (solo el popup, NO el armado)
   useEffect(() => {
     const handleClickFuera = (e) => {
       if (sugerenciasRef.current && !sugerenciasRef.current.contains(e.target)) {
@@ -215,14 +205,12 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     return () => document.removeEventListener('mousedown', handleClickFuera);
   }, []);
 
-  // Scroll suave a la opción resaltada
   useEffect(() => {
     if (indiceSeleccionado >= 0 && opcionRef.current) {
       opcionRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   }, [indiceSeleccionado]);
 
-  // Pegado global de imágenes (Lightshot / Print Screen)
   useEffect(() => {
     const handlePasteGlobal = (e) => {
       const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
@@ -247,11 +235,9 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     return () => document.removeEventListener('paste', handlePasteGlobal);
   }, [etapa]);
 
-  // ===================== HELPERS DE ESTILO =====================
   const inputStyle = (bloqueado) => ({ padding: '8px', background: bloqueado ? '#f0f0f0' : '#fff', border: '1px solid #ccc', borderRadius: '4px' });
   const bloqueado = etapa !== 'INICIO' && !edicionCampos;
 
-  // ===================== JSX =====================
   return (
     <div style={{ background: '#fff', border: '1px solid #ddd', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', maxWidth: '600px', margin: 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '20px', fontSize: '12px', fontWeight: 'bold', color: '#666' }}>
@@ -269,8 +255,37 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
       </div>
       
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
-        <input style={inputStyle(bloqueado)} type="text" placeholder="Cámara (Cam)" value={form.camara} onChange={e => setForm({...form, camara: e.target.value.toUpperCase()})} disabled={bloqueado} />
-        <input style={inputStyle(bloqueado)} type="text" placeholder="Zona" value={form.zona} onChange={e => setForm({...form, zona: e.target.value.toUpperCase()})} disabled={bloqueado} />
+        
+        <AutocompleteCamara
+          value={form.camara}
+          onSelect={(camara) => {
+            setForm(prev => ({
+              ...prev,
+              camara: `${camara.codigo} - ${camara.nombre}`,
+              zona: `${camara.macro_zona}/SECTOR ${camara.sector}`
+            }));
+          }}
+          onClear={() => {
+            setForm(prev => ({ ...prev, camara: '', zona: '' }));
+          }}
+        />
+
+        <input
+          style={{
+            padding: '8px',
+            background: form.zona ? '#e9ecef' : '#fff',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            color: form.zona ? '#495057' : '#6c757d',
+            fontStyle: form.zona ? 'normal' : 'italic',
+            fontWeight: form.zona ? 'bold' : 'normal'
+          }}
+          type="text"
+          placeholder="Zona (se autocompleta al elegir cámara)"
+          value={form.zona}
+          readOnly
+        />
+
         <input style={inputStyle(bloqueado)} type="text" placeholder="ROPER (Encargado del Servicio)" value={form.roper} onChange={e => setForm({...form, roper: e.target.value.toUpperCase()})} disabled={bloqueado} />
         
         <div style={{ position: 'relative' }} ref={sugerenciasRef}>
@@ -280,7 +295,7 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
           <input 
             ref={inputBusquedaRef}
             type="text" 
-            placeholder="🔍 Escriba para buscar incidencia..." 
+            placeholder=" Escriba para buscar incidencia..." 
             value={busquedaIncidencia} 
             onChange={(e) => {
               const valor = e.target.value.toUpperCase();
@@ -328,7 +343,10 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
         {etapa === 'FINALIZADO' && (
           <>
             <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Conclusión / Reporte Final... (Enter = enviar · Shift+Enter = nueva línea)" value={form.asunto_finalizado} onChange={e => setForm({...form, asunto_finalizado: e.target.value.toUpperCase()})} />
-            <input style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }} type="text" placeholder="Atendido por..." value={form.atendido} onChange={e => setForm({...form, atendido: e.target.value.toUpperCase()})} />
+            
+            {/* ✅ AUTOCOMPLETE ATENDIDO POR (NUEVO) */}
+            <AutocompleteAtendido onChange={(valor) => setForm(prev => ({ ...prev, atendido: valor }))} />
+            
           </>
         )}
         <label style={{ cursor: 'pointer', background: '#eaf4ff', padding: '15px', borderRadius: '5px', textAlign: 'center', border: '2px dashed #0056b3', marginTop: '10px' }}>
@@ -355,7 +373,7 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
 
       {enterArmado && (
         <div style={{ textAlign: 'center', marginTop: '15px', padding: '8px', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', color: '#856404' }}>
-          ⚠️ ENTER ARMADO — presione ENTER de nuevo para {etapa !== 'FINALIZADO' ? 'avanzar' : 'ENVIAR'}, o Esc para cancelar
+          ️ ENTER ARMADO — presione ENTER de nuevo para {etapa !== 'FINALIZADO' ? 'avanzar' : 'ENVIAR'}, o Esc para cancelar
         </div>
       )}
 

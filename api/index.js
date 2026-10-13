@@ -7,7 +7,6 @@ const path = require('path');
 const exportController = require('./exportController');
 const http = require('http');
 const { Server } = require('socket.io');
-// NUEVAS LIBRERÍAS DE SEGURIDAD
 const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
 
@@ -198,7 +197,6 @@ app.put('/api/salas/:id', async (req, res) => {
 });
 
 app.post('/api/salas/vincular', async (req, res) => {
-  // TODO: Implementar INSERT real en chats_participantes
   res.json({ success: true, mensaje: `Usuario vinculado` });
 });
 
@@ -238,7 +236,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }, maxHttpBufferSize: 1e8 });
 
 // ==========================================================
-// RUTA DE REPORTES CORREGIDA Y LIMPIA (SIN DUPLICADOS)
+// RUTA DE REPORTES
 // ==========================================================
 app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
   const { id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, operador, centro_trabajo, turno } = req.body;
@@ -273,10 +271,40 @@ app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
     res.status(500).send('Error al guardar reporte.'); 
   }
 });
+
 // ==========================================================
+// GET CÁMARAS PARA AUTOCOMPLETADO
+// ==========================================================
+app.get('/api/camaras', async (req, res) => {
+  try {
+    const result = await db.query("SELECT codigo, nombre, macro_zona, sector FROM camaras ORDER BY codigo ASC");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error al cargar cámaras:", err);
+    res.status(500).send("Error al cargar cámaras.");
+  }
+});
+
+// ==========================================================
+// GET PERSONAL DE CAMPO PARA AUTOCOMPLETADO
+// ==========================================================
+app.get('/api/personal', async (req, res) => {
+  try {
+    const result = await db.query(
+      "SELECT id, codigo, nombre, categoria, grupo, tipo_entrada FROM personal_campo WHERE estado = TRUE ORDER BY grupo ASC, codigo ASC, nombre ASC"
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error al cargar personal:", err);
+    res.status(500).send("Error al cargar personal.");
+  }
+});
 
 require('./sockets')(io);
 
+// ==========================================================
+// CATCH-ALL: DEBE IR SIEMPRE AL FINAL
+// ==========================================================
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get(/.*/, (req, res) => {
