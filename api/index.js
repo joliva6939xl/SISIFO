@@ -293,7 +293,19 @@ app.get('/api/personal', async (req, res) => {
     const result = await db.query(
       "SELECT id, codigo, nombre, categoria, grupo, tipo_entrada FROM personal_campo WHERE estado = TRUE ORDER BY grupo ASC, codigo ASC, nombre ASC"
     );
-    res.json(result.rows);
+    
+    // Forzar encoding UTF-8 en la respuesta
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    
+    // Convertir los datos para asegurar que los acentos se envíen correctamente
+    const datos = result.rows.map(row => ({
+      ...row,
+      nombre: row.nombre ? row.nombre.toString('utf8') : null,
+      categoria: row.categoria ? row.categoria.toString('utf8') : null,
+      grupo: row.grupo ? row.grupo.toString('utf8') : null
+    }));
+    
+    res.json(datos);
   } catch (err) {
     console.error("Error al cargar personal:", err);
     res.status(500).send("Error al cargar personal.");

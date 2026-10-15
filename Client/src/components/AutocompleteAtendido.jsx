@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 
-// Texto que aporta un campo al reporte final
 const computeValor = (c) => {
   if (c.modo === 'LISTO') return c.valorFinal || '';
   if (c.modo === 'DETALLE') {
@@ -9,7 +8,7 @@ const computeValor = (c) => {
     if (v === '') return '';
     if (c.prefijo === 'EME') return `EME-${v}`;
     if (c.prefijo === 'PIE/CASETA') return `PIE - ${v}`;
-    return `${c.prefijo} - ${v}`; // PARAMEDICOS
+    return `${c.prefijo} - ${v}`;
   }
   return '';
 };
@@ -17,7 +16,6 @@ const computeValor = (c) => {
 const serialize = (campos) =>
   campos.map(computeValor).filter((x) => x !== '').join(', ');
 
-// Coincidencia por palabras separadas (entiende "ALFA 71")
 const coincide = (p, partes) =>
   partes.every((parte) =>
     (p.codigo || '').toUpperCase().includes(parte) ||
@@ -25,9 +23,27 @@ const coincide = (p, partes) =>
     (p.grupo || '').toUpperCase().includes(parte)
   );
 
+const crearCampoVacio = () => ({
+  id: Date.now() + Math.random(),
+  modo: 'BUSCAR',
+  busqueda: '',
+  mostrandoPopup: false,
+  indiceActivo: -1,
+  prefijo: '',
+  subTipo: '',
+  subValor: '',
+  subMostrando: false,
+  subIndice: -1,
+  valorFinal: ''
+});
+
 export default function AutocompleteAtendido({ onChange }) {
   const [personal, setPersonal] = useState([]);
-  const [campos, setCampos] = useState([]);
+  const [campos, setCampos] = useState([crearCampoVacio()]);
+
+  // ✅ REFS para scroll automático
+  const opcionRef = useRef(null);       // popup principal
+  const subOpcionRef = useRef(null);    // popup paramédicos
 
   useEffect(() => {
     axios.get('/api/personal')
@@ -35,19 +51,29 @@ export default function AutocompleteAtendido({ onChange }) {
       .catch((err) => { console.error('Error cargando personal:', err); setPersonal([]); });
   }, []);
 
+  // ✅ SCROLL automático para popup principal
+  useEffect(() => {
+    if (opcionRef.current) {
+      opcionRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [campos.map(c => c.indiceActivo).join(',')]);
+
+  // ✅ SCROLL automático para popup de paramédicos
+  useEffect(() => {
+    if (subOpcionRef.current) {
+      subOpcionRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [campos.map(c => c.subIndice).join(',')]);
+
   const aplicar = (nuevos) => { setCampos(nuevos); onChange(serialize(nuevos)); };
 
-  const agregarCampo = () =>
-    aplicar([...campos, {
-      id: Date.now(), modo: 'BUSCAR',
-      busqueda: '', mostrandoPopup: false, indiceActivo: -1,
-      prefijo: '', subTipo: '', subValor: '', subMostrando: false, subIndice: -1,
-      valorFinal: ''
-    }]);
+  const agregarCampo = () => aplicar([...campos, crearCampoVacio()]);
 
-  const eliminarCampo = (id) => aplicar(campos.filter((c) => c.id !== id));
+  const eliminarCampo = (id) => {
+    const nuevos = campos.filter((c) => c.id !== id);
+    aplicar(nuevos.length === 0 ? [crearCampoVacio()] : nuevos);
+  };
 
-  // Buscador principal: oculta los paramédicos sueltos (viven dentro de la etiqueta)
   const resultadosPrincipal = (q) => {
     if (q.trim() === '') return [];
     const partes = q.toUpperCase().trim().split(/\s+/);
@@ -57,7 +83,6 @@ export default function AutocompleteAtendido({ onChange }) {
     });
   };
 
-  // Sub-buscador de PARAMEDICOS: solo los 19 del grupo
   const resultadosSub = (q) => {
     if (q.trim() === '') return [];
     const partes = q.toUpperCase().trim().split(/\s+/);
@@ -172,32 +197,24 @@ export default function AutocompleteAtendido({ onChange }) {
         </span>
       </label>
 
-      {campos.length === 0 && (
-        <div style={{ fontSize: '12px', color: '#999', fontStyle: 'italic', marginBottom: '6px' }}>
-          Sin unidades. Pulsa “+ Agregar otro”.
-        </div>
-      )}
-
       {campos.map((campo, index) => {
         const resP = campo.modo === 'BUSCAR' ? resultadosPrincipal(campo.busqueda) : [];
         const resS = campo.modo === 'DETALLE' && campo.subTipo === 'AUTOCOMPLETE' ? resultadosSub(campo.subValor) : [];
         return (
           <div key={campo.id} style={{ position: 'relative', display: 'flex', gap: '6px', marginBottom: '6px', alignItems: 'stretch' }}>
 
-            {/* BUSCAR */}
             {campo.modo === 'BUSCAR' && (
               <input
                 type="text"
-                placeholder={`Campo ${index + 1}: ALFA 71, OMEGA 44, PNP, PARAMEDICO, EME, PIE...`}
+                placeholder={`Unidad ${index + 1}: ALFA 71, OMEGA 44, PNP, PARAMEDICO, EME, PIE...`}
                 value={campo.busqueda}
                 onChange={(e) => setBusqueda(campo.id, e.target.value.toUpperCase())}
                 onKeyDown={(e) => onKeyDownPrincipal(e, campo.id)}
-                autoFocus
+                autoFocus={index === 0 && campos.length === 1}
                 style={{ flex: 1, padding: '10px', border: '2px solid #0056b3', borderRadius: '4px', fontSize: '13px', textTransform: 'uppercase' }}
               />
             )}
 
-            {/* DETALLE: etiqueta fija + caja (autocomplete o libre) */}
             {campo.modo === 'DETALLE' && (
               <>
                 <span style={estiloEtiqueta}>{campo.prefijo}</span>
@@ -209,7 +226,7 @@ export default function AutocompleteAtendido({ onChange }) {
                     : 'escribe el nombre del paramédico...'
                   }
                   value={campo.subValor}
-                  onChange={(e) => (campo.subTipo === 'AUTOCOMPLETE' ? setSubValor(campo.id, e.target.value) : setSubValor(campo.id, e.target.value))}
+                  onChange={(e) => setSubValor(campo.id, e.target.value)}
                   onKeyDown={(e) => onKeyDownSub(e, campo.id)}
                   autoFocus
                   style={estiloCaja}
@@ -217,7 +234,6 @@ export default function AutocompleteAtendido({ onChange }) {
               </>
             )}
 
-            {/* LISTO */}
             {campo.modo === 'LISTO' && (
               <input
                 type="text"
@@ -229,13 +245,17 @@ export default function AutocompleteAtendido({ onChange }) {
 
             <button type="button" onClick={() => eliminarCampo(campo.id)} title="Quitar campo" style={estiloBtnX}>×</button>
 
-            {/* Popup principal */}
+            {/* ✅ POPUP PRINCIPAL con ref para scroll */}
             {campo.modo === 'BUSCAR' && campo.mostrandoPopup && resP.length > 0 && (
               <div style={estiloPopup}>
                 {resP.map((p, idx) => {
                   const act = idx === campo.indiceActivo;
                   return (
-                    <div key={p.id} onClick={() => elegirPrincipal(campo.id, p)} onMouseEnter={() => navegar(campo.id, 0, 0, false) || aplicar(campos.map((c) => c.id === campo.id ? { ...c, indiceActivo: idx } : c))}
+                    <div 
+                      key={p.id} 
+                      ref={act ? opcionRef : null}
+                      onClick={() => elegirPrincipal(campo.id, p)} 
+                      onMouseEnter={() => aplicar(campos.map((c) => c.id === campo.id ? { ...c, indiceActivo: idx } : c))}
                       style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: '1px solid #eee', fontSize: '12px', background: act ? '#0056b3' : 'white', color: act ? 'white' : '#333', fontWeight: act ? 'bold' : 'normal' }}>
                       <strong style={{ color: act ? '#ffd54f' : '#0056b3' }}>{String(idx + 1).padStart(3, '0')}.</strong>{' '}
                       {p.codigo ? `${p.codigo} - ${p.nombre}` : p.nombre}
@@ -248,16 +268,20 @@ export default function AutocompleteAtendido({ onChange }) {
               </div>
             )}
             {campo.modo === 'BUSCAR' && campo.mostrandoPopup && resP.length === 0 && campo.busqueda.trim() !== '' && (
-              <div style={{ ...estiloPopup, padding: '12px', textAlign: 'center', color: '#666', fontSize: '12px' }}>Sin coincidencias para “{campo.busqueda}”</div>
+              <div style={{ ...estiloPopup, padding: '12px', textAlign: 'center', color: '#666', fontSize: '12px' }}>Sin coincidencias para "{campo.busqueda}"</div>
             )}
 
-            {/* Popup sub (paramédicos) */}
+            {/* ✅ POPUP PARAMÉDICOS con ref para scroll */}
             {campo.modo === 'DETALLE' && campo.subTipo === 'AUTOCOMPLETE' && campo.subMostrando && resS.length > 0 && (
               <div style={estiloPopup}>
                 {resS.map((p, idx) => {
                   const act = idx === campo.subIndice;
                   return (
-                    <div key={p.id} onClick={() => elegirSub(campo.id, p)} onMouseEnter={() => aplicar(campos.map((c) => c.id === campo.id ? { ...c, subIndice: idx } : c))}
+                    <div 
+                      key={p.id} 
+                      ref={act ? subOpcionRef : null}
+                      onClick={() => elegirSub(campo.id, p)} 
+                      onMouseEnter={() => aplicar(campos.map((c) => c.id === campo.id ? { ...c, subIndice: idx } : c))}
                       style={{ padding: '9px 12px', cursor: 'pointer', borderBottom: '1px solid #eee', fontSize: '12px', background: act ? '#ff9800' : 'white', color: act ? 'white' : '#333', fontWeight: act ? 'bold' : 'normal' }}>
                       <strong style={{ color: act ? '#fff3cd' : '#ff9800' }}>{String(idx + 1).padStart(3, '0')}.</strong> {p.nombre}
                     </div>
@@ -266,7 +290,7 @@ export default function AutocompleteAtendido({ onChange }) {
               </div>
             )}
             {campo.modo === 'DETALLE' && campo.subTipo === 'AUTOCOMPLETE' && campo.subMostrando && resS.length === 0 && campo.subValor.trim() !== '' && (
-              <div style={{ ...estiloPopup, padding: '12px', textAlign: 'center', color: '#666', fontSize: '12px' }}>Ningún paramédico coincide con “{campo.subValor}”</div>
+              <div style={{ ...estiloPopup, padding: '12px', textAlign: 'center', color: '#666', fontSize: '12px' }}>Ningún paramédico coincide con "{campo.subValor}"</div>
             )}
           </div>
         );
@@ -274,7 +298,7 @@ export default function AutocompleteAtendido({ onChange }) {
 
       <button type="button" onClick={agregarCampo}
         style={{ background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', padding: '9px 18px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span style={{ fontSize: '18px', lineHeight: 1 }}>+</span> Agregar otro
+        <span style={{ fontSize: '18px', lineHeight: 1 }}>+</span> Agregar otra unidad
       </button>
     </div>
   );

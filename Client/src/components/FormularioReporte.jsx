@@ -6,6 +6,19 @@ import { tipificaciones } from '../data/tipificaciones';
 import AutocompleteCamara from './AutocompleteCamara';
 import AutocompleteAtendido from './AutocompleteAtendido';
 
+// Detecta si una incidencia requiere especificar detalle
+const requiereEspecificar = (incidencia) =>
+  typeof incidencia === 'string' && incidencia.toUpperCase().includes('(ESPECIFICAR)');
+
+// Buscador: coincide por incidencia O por categoría
+const buscarTipif = (q) => {
+  if (q.trim() === '') return [];
+  const v = q.toUpperCase().trim();
+  return tipificaciones.filter(t =>
+    t.incidencia.toUpperCase().includes(v) || t.categoria.toUpperCase().includes(v)
+  );
+};
+
 export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
   const [etapa, setEtapa] = useState('INICIO');
   const [edicionCampos, setEdicionCampos] = useState(false);
@@ -27,9 +40,7 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
   const liveRef = useRef({ enterArmado, etapa, mostrarSugerencias });
   const fnRef = useRef({ avanzar: null, enviar: null });
 
-  const sugerenciasFiltradas = busquedaIncidencia.trim() === '' 
-    ? [] 
-    : tipificaciones.filter(t => t.incidencia.toUpperCase().includes(busquedaIncidencia.toUpperCase()));
+  const sugerenciasFiltradas = buscarTipif(busquedaIncidencia);
 
   const seleccionarIncidencia = (tipif) => {
     setForm({ ...form, incidencia: tipif.incidencia, categoria: tipif.categoria, incidencia_otro: '' });
@@ -65,8 +76,8 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     if (etapa === 'INICIO') {
       if (!form.camara || !form.zona || !form.roper || !form.incidencia || !form.asunto_inicio) 
         return alert("Complete todos los datos iniciales incluyendo la Incidencia.");
-      if (form.incidencia === 'ESPECIFICAR' && !form.incidencia_otro) 
-        return alert("Debe especificar la incidencia no tipificada.");
+      if (requiereEspecificar(form.incidencia) && !form.incidencia_otro) 
+        return alert("Debe especificar el detalle de la incidencia.");
       setEtapa('DESARROLLO');
       setEdicionCampos(false);
     } else if (etapa === 'DESARROLLO') {
@@ -76,6 +87,7 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     }
   };
 
+  // ✅ PASO 3: NO se resetea el form → los datos se mantienen al navegar
   const retrocederEtapa = () => {
     if (etapa === 'FINALIZADO') setEtapa('DESARROLLO');
     else if (etapa === 'DESARROLLO') setEtapa('INICIO');
@@ -88,7 +100,9 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     if (!form.asunto_finalizado || !form.atendido) { setEnterArmado(false); return alert("Complete el cierre."); }
     setEnterArmado(false);
     const idGenerado = Math.floor(Math.random() * 1000000);
-    const incidenciaFinal = form.incidencia === 'ESPECIFICAR' ? form.incidencia_otro : form.incidencia;
+    const incidenciaFinal = requiereEspecificar(form.incidencia) 
+      ? `${form.incidencia} - ${form.incidencia_otro}` 
+      : form.incidencia;
     
     const enviarPaquete = async (nombreEtapa, asuntoTexto, atendidoTexto, listaArchivos) => {
       const fd = new FormData();
@@ -237,6 +251,7 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
 
   const inputStyle = (bloqueado) => ({ padding: '8px', background: bloqueado ? '#f0f0f0' : '#fff', border: '1px solid #ccc', borderRadius: '4px' });
   const bloqueado = etapa !== 'INICIO' && !edicionCampos;
+  const esIncidenciaEspecificar = requiereEspecificar(form.incidencia);
 
   return (
     <div style={{ background: '#fff', border: '1px solid #ddd', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', maxWidth: '600px', margin: 'auto' }}>
@@ -288,67 +303,98 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
 
         <input style={inputStyle(bloqueado)} type="text" placeholder="ROPER (Encargado del Servicio)" value={form.roper} onChange={e => setForm({...form, roper: e.target.value.toUpperCase()})} disabled={bloqueado} />
         
-        <div style={{ position: 'relative' }} ref={sugerenciasRef}>
-          <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', display: 'block', marginBottom: '5px' }}>
-            Incidencia: <span style={{ fontSize: '10px', color: '#888', fontWeight: 'normal' }}>(↑↓ navegar · Enter elegir · Esc cerrar)</span>
-          </label>
-          <input 
-            ref={inputBusquedaRef}
-            type="text" 
-            placeholder=" Escriba para buscar incidencia..." 
-            value={busquedaIncidencia} 
-            onChange={(e) => {
-              const valor = e.target.value.toUpperCase();
-              setBusquedaIncidencia(valor);
-              const coincide = valor.trim() === '' ? [] : tipificaciones.filter(t => t.incidencia.toUpperCase().includes(valor));
-              setMostrarSugerencias(coincide.length > 0);
-              setIndiceSeleccionado(coincide.length > 0 ? 0 : -1);
-              if (form.incidencia && !valor.includes(form.incidencia.substring(0, 10))) setForm({ ...form, incidencia: '', categoria: '' });
-            }} 
-            onFocus={() => { if (busquedaIncidencia.trim() !== '' && busquedaIncidencia !== form.incidencia) setMostrarSugerencias(true); }} 
-            onKeyDown={handleKeyDownBusqueda}
-            style={{ padding: '10px', border: '2px solid #0056b3', borderRadius: '4px', fontSize: '13px', background: '#fff', width: '100%', boxSizing: 'border-box', textTransform: 'uppercase' }} 
-          />
-          {mostrarSugerencias && sugerenciasFiltradas.length > 0 && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ccc', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxHeight: '300px', overflowY: 'auto', zIndex: 1000, marginTop: '5px' }}>
-              {sugerenciasFiltradas.map((t, idx) => {
-                const activa = idx === indiceSeleccionado;
-                return (
-                  <div key={idx} ref={activa ? opcionRef : null} onClick={() => seleccionarIncidencia(t)} onMouseEnter={() => setIndiceSeleccionado(idx)}
-                    style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #eee', fontSize: '12px', background: activa ? '#0056b3' : (form.incidencia === t.incidencia ? '#e3f2fd' : 'white'), color: activa ? 'white' : '#333', transition: 'background 0.15s, color 0.15s', fontWeight: activa ? 'bold' : 'normal' }}>
-                    <strong style={{ color: activa ? '#ffd54f' : '#0056b3' }}>{String(idx + 1).padStart(3, '0')}.</strong> {t.incidencia}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {mostrarSugerencias && sugerenciasFiltradas.length === 0 && busquedaIncidencia.trim() !== '' && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ccc', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: '15px', zIndex: 1000, marginTop: '5px', textAlign: 'center', color: '#666', fontSize: '13px' }}>No se encontraron coincidencias</div>
-          )}
-        </div>
+        {/* ===== INCIDENCIA ===== */}
+        {esIncidenciaEspecificar ? (
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
+            <span style={{
+              display: 'flex', alignItems: 'center', padding: '0 12px',
+              background: '#e9ecef', border: '1px solid #adb5bd', borderRight: 'none',
+              borderRadius: '4px 0 0 4px', fontSize: '11px', fontWeight: 'bold', color: '#495057', whiteSpace: 'nowrap', flex: '0 0 auto'
+            }}>
+              {form.incidencia}
+            </span>
+            <input
+              type="text"
+              placeholder="Escriba el detalle de la incidencia..."
+              value={form.incidencia_otro}
+              onChange={e => setForm({...form, incidencia_otro: e.target.value.toUpperCase()})}
+              autoFocus
+              style={{
+                flex: 1, padding: '10px', border: '2px solid #ff9800', borderRadius: '0 4px 4px 0',
+                fontSize: '13px', textTransform: 'uppercase', background: '#fff8ee'
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, incidencia: '', categoria: '', incidencia_otro: '' })}
+              title="Cancelar y volver a buscar"
+              style={{ background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', width: '34px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px' }}
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <div style={{ position: 'relative' }} ref={sugerenciasRef}>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', display: 'block', marginBottom: '5px' }}>
+              Incidencia: <span style={{ fontSize: '10px', color: '#888', fontWeight: 'normal' }}>(↑↓ navegar · Enter elegir · Esc cerrar)</span>
+            </label>
+            <input 
+              ref={inputBusquedaRef}
+              type="text" 
+              placeholder="🔍 Escriba para buscar incidencia o categoría..." 
+              value={busquedaIncidencia} 
+              onChange={(e) => {
+                const valor = e.target.value.toUpperCase();
+                setBusquedaIncidencia(valor);
+                const coincide = buscarTipif(valor);
+                setMostrarSugerencias(coincide.length > 0);
+                setIndiceSeleccionado(coincide.length > 0 ? 0 : -1);
+                if (form.incidencia && !valor.includes(form.incidencia.substring(0, 10))) setForm({ ...form, incidencia: '', categoria: '' });
+              }} 
+              onFocus={() => { if (busquedaIncidencia.trim() !== '' && busquedaIncidencia !== form.incidencia) setMostrarSugerencias(true); }} 
+              onKeyDown={handleKeyDownBusqueda}
+              style={{ padding: '10px', border: '2px solid #0056b3', borderRadius: '4px', fontSize: '13px', background: '#fff', width: '100%', boxSizing: 'border-box', textTransform: 'uppercase' }} 
+            />
+            {mostrarSugerencias && sugerenciasFiltradas.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ccc', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxHeight: '300px', overflowY: 'auto', zIndex: 1000, marginTop: '5px' }}>
+                {sugerenciasFiltradas.map((t, idx) => {
+                  const activa = idx === indiceSeleccionado;
+                  const esGlobal = t.categoria === "OTRAS INCIDENCIAS NO TIPIFICADAS";
+                  return (
+                    <div key={idx} ref={activa ? opcionRef : null} onClick={() => seleccionarIncidencia(t)} onMouseEnter={() => setIndiceSeleccionado(idx)}
+                      style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #eee', fontSize: '12px',
+                        background: activa ? '#0056b3' : (esGlobal ? '#fff3cd' : (form.incidencia === t.incidencia ? '#e3f2fd' : 'white')),
+                        color: activa ? 'white' : (esGlobal ? '#856404' : '#333'),
+                        transition: 'background 0.15s, color 0.15s', fontWeight: (activa || esGlobal) ? 'bold' : 'normal' }}>
+                      <strong style={{ color: activa ? '#ffd54f' : (esGlobal ? '#ff9800' : '#0056b3') }}>{String(idx + 1).padStart(3, '0')}.</strong> {t.incidencia}
+                      <span style={{ float: 'right', fontSize: '10px', opacity: 0.8 }}>{t.categoria}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {mostrarSugerencias && sugerenciasFiltradas.length === 0 && busquedaIncidencia.trim() !== '' && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ccc', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: '15px', zIndex: 1000, marginTop: '5px', textAlign: 'center', color: '#666', fontSize: '13px' }}>No se encontraron coincidencias</div>
+            )}
+          </div>
+        )}
 
         <input style={{ padding: '8px', background: form.categoria ? '#e9ecef' : '#fff', border: '1px solid #ccc', borderRadius: '4px', color: form.categoria ? '#495057' : '#6c757d', fontStyle: form.categoria ? 'normal' : 'italic', fontWeight: form.categoria ? 'bold' : 'normal' }} type="text" placeholder="Categoría (autocompletada)" value={form.categoria} readOnly />
-        {form.incidencia === 'ESPECIFICAR' && (
-          <input style={{ padding: '8px', background: '#fff', border: '2px solid #ff9800', borderRadius: '4px' }} type="text" placeholder="Especifique la incidencia no tipificada..." value={form.incidencia_otro} onChange={e => setForm({...form, incidencia_otro: e.target.value.toUpperCase()})} required />
-        )}
       </div>
 
+      {/* ✅ PASO 3: bloques por etapa con display:none (NUNCA se desmontan → nada se pierde al ir/volver) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {etapa === 'INICIO' && (
+        <div style={{ display: etapa === 'INICIO' ? 'block' : 'none' }}>
           <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Asunto Inicial... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_inicio} onChange={e => setForm({...form, asunto_inicio: e.target.value.toUpperCase()})} />
-        )}
-        {etapa === 'DESARROLLO' && (
+        </div>
+        <div style={{ display: etapa === 'DESARROLLO' ? 'block' : 'none' }}>
           <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Desarrollo... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_desarrollo} onChange={e => setForm({...form, asunto_desarrollo: e.target.value.toUpperCase()})} />
-        )}
-        {etapa === 'FINALIZADO' && (
-          <>
-            <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Conclusión / Reporte Final... (Enter = enviar · Shift+Enter = nueva línea)" value={form.asunto_finalizado} onChange={e => setForm({...form, asunto_finalizado: e.target.value.toUpperCase()})} />
-            
-            {/* ✅ AUTOCOMPLETE ATENDIDO POR (NUEVO) */}
-            <AutocompleteAtendido onChange={(valor) => setForm(prev => ({ ...prev, atendido: valor }))} />
-            
-          </>
-        )}
+        </div>
+        <div style={{ display: etapa === 'FINALIZADO' ? 'block' : 'none' }}>
+          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Conclusión / Reporte Final... (Enter = enviar · Shift+Enter = nueva línea)" value={form.asunto_finalizado} onChange={e => setForm({...form, asunto_finalizado: e.target.value.toUpperCase()})} />
+          <AutocompleteAtendido onChange={(valor) => setForm(prev => ({ ...prev, atendido: valor }))} />
+        </div>
+
         <label style={{ cursor: 'pointer', background: '#eaf4ff', padding: '15px', borderRadius: '5px', textAlign: 'center', border: '2px dashed #0056b3', marginTop: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginBottom: '5px', color: '#0056b3' }}><Camera size={20} /> o <ClipboardPaste size={20} /></div>
           <span style={{ fontSize: '14px', color: '#333', fontWeight: 'bold' }}>Presiona Ctrl+V para pegar imágenes</span><br />
@@ -373,7 +419,7 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
 
       {enterArmado && (
         <div style={{ textAlign: 'center', marginTop: '15px', padding: '8px', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', color: '#856404' }}>
-          ️ ENTER ARMADO — presione ENTER de nuevo para {etapa !== 'FINALIZADO' ? 'avanzar' : 'ENVIAR'}, o Esc para cancelar
+          ⚠️ ENTER ARMADO — presione ENTER de nuevo para {etapa !== 'FINALIZADO' ? 'avanzar' : 'ENVIAR'}, o Esc para cancelar
         </div>
       )}
 
