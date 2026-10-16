@@ -89,26 +89,50 @@ export default function AutocompleteAtendido({ onChange }) {
     return personal.filter((p) => p.grupo === 'PARAMEDICOS' && p.tipo_entrada === 'FIJA' && coincide(p, partes));
   };
 
-  const elegirPrincipal = (campoId, persona) => {
-    const nuevos = campos.map((c) => {
-      if (c.id !== campoId) return c;
-      if (persona.tipo_entrada === 'FIJA') {
-        return {
-          ...c, modo: 'LISTO',
-          valorFinal: persona.codigo ? `${persona.codigo} - ${persona.nombre}` : persona.nombre,
-          busqueda: '', mostrandoPopup: false, indiceActivo: -1
-        };
-      }
-      const prefijo = persona.codigo || persona.grupo;
+ const elegirPrincipal = (campoId, persona) => {
+  const nuevos = campos.map((c) => {
+    if (c.id !== campoId) return c;
+    if (persona.tipo_entrada === 'FIJA') {
       return {
-        ...c, modo: 'DETALLE', prefijo,
-        subTipo: prefijo === 'PARAMEDICOS' ? 'AUTOCOMPLETE' : 'LIBRE',
-        subValor: '', subMostrando: false, subIndice: -1,
+        ...c, modo: 'LISTO',
+        valorFinal: persona.codigo ? `${persona.codigo} - ${persona.nombre}` : persona.nombre,
         busqueda: '', mostrandoPopup: false, indiceActivo: -1
       };
-    });
-    aplicar(nuevos);
-  };
+    }
+    const prefijo = persona.codigo || persona.grupo;
+    return {
+      ...c, modo: 'DETALLE', prefijo,
+      subTipo: prefijo === 'PARAMEDICOS' ? 'AUTOCOMPLETE' : 'LIBRE',
+      subValor: '', subMostrando: false, subIndice: -1,
+      busqueda: '', mostrandoPopup: false, indiceActivo: -1
+    };
+  });
+  aplicar(nuevos);
+
+  // ✅ Si es OMEGA, preguntar si tiene integrado policial
+  if (persona.grupo === 'OMEGAS') {
+    setTimeout(() => {
+      const tieneIntegrado = window.confirm(`¿El OMEGA ${persona.codigo || persona.nombre} tiene integrado policial?`);
+      if (tieneIntegrado) {
+        // Agregar campo adicional con "CON INTEGRADO POLICIAL"
+        const campoIntegrado = {
+          id: Date.now() + Math.random(),
+          modo: 'LISTO',
+          busqueda: '',
+          mostrandoPopup: false,
+          indiceActivo: -1,
+          prefijo: '',
+          subTipo: '',
+          subValor: '',
+          subMostrando: false,
+          subIndice: -1,
+          valorFinal: 'CON INTEGRADO POLICIAL'
+        };
+        aplicar([...nuevos, campoIntegrado]);
+      }
+    }, 100);
+  }
+};
 
   const elegirSub = (campoId, persona) => {
     const nuevos = campos.map((c) =>

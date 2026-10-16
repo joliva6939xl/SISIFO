@@ -248,6 +248,16 @@ app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
       [id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno]
     );
 
+    // ✅ NUEVO: gritar al panel del analista en tiempo real (no afecta nada más)
+    io.emit('nuevo_reporte_analista', {
+      usuario: operador,
+      fecha: new Date().toLocaleString('es-PE'),
+      turno: turno,
+      zona: zona,
+      categoria: categoria,
+      incidencia: incidencia
+    });
+
     if (etapa && etapa.toUpperCase() === 'FINALIZADO') {
       try {
         const salaReportes = await db.query("SELECT id_sala FROM chats_salas WHERE nombre_sala = 'REPORTE DE LLAMADAS :C' LIMIT 1");

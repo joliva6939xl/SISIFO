@@ -24,18 +24,19 @@ function App() {
     setUsuarioGenerado(usuario);
     setCargoUsuario(cargoReal);
     setDatosSesion({ centro, turno });
-    
+
     if (cargoReal === 'ADMINISTRADOR') setVistaActual('ADMINISTRADOR');
     else if (cargoReal === 'ANALISTA') setVistaActual('ALMACEN');
     else setVistaActual('FORMULARIO');
-    
+
     setSesionActiva(true);
   };
 
   const handleLogout = () => {
-    if(window.confirm("¿Cerrar sesión?")) {
+    if (window.confirm("¿Cerrar sesión?")) {
       localStorage.removeItem('sisifo_user');
       localStorage.removeItem('sisifo_cargo');
+      localStorage.removeItem('sisifo_roper'); // ✅ limpia el ROPER al salir
       setSesionActiva(false);
       window.location.reload();
     }
@@ -66,7 +67,7 @@ function App() {
 
       {/* ENRUTAMIENTO DE VISTAS */}
       {vistaActual === 'ADMINISTRADOR' && <PanelAdministrador usuarioLogueado={usuarioGenerado} />}
-      
+
       {vistaActual !== 'ADMINISTRADOR' && (
         <>
           <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', justifyContent: 'center' }}>

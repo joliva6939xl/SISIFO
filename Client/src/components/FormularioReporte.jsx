@@ -6,11 +6,9 @@ import { tipificaciones } from '../data/tipificaciones';
 import AutocompleteCamara from './AutocompleteCamara';
 import AutocompleteAtendido from './AutocompleteAtendido';
 
-// Detecta si una incidencia requiere especificar detalle
 const requiereEspecificar = (incidencia) =>
   typeof incidencia === 'string' && incidencia.toUpperCase().includes('(ESPECIFICAR)');
 
-// Buscador: coincide por incidencia O por categoría
 const buscarTipif = (q) => {
   if (q.trim() === '') return [];
   const v = q.toUpperCase().trim();
@@ -22,10 +20,14 @@ const buscarTipif = (q) => {
 export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
   const [etapa, setEtapa] = useState('INICIO');
   const [edicionCampos, setEdicionCampos] = useState(false);
-  const [form, setForm] = useState({ 
-    camara: '', zona: '', roper: '', 
+
+  // ✅ ROPER persistente: se precarga del localStorage (lo que escribiste en el turno)
+  const roperInicial = localStorage.getItem('sisifo_roper') || '';
+
+  const [form, setForm] = useState({
+    camara: '', zona: '', roper: roperInicial,
     categoria: '', incidencia: '', incidencia_otro: '',
-    asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' 
+    asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: ''
   });
   const [busquedaIncidencia, setBusquedaIncidencia] = useState('');
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
@@ -57,8 +59,8 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onloadend = () => {
-          setArchivos(prev => ({...prev, [currEtapa]: [...prev[currEtapa], file]}));
-          setVistasPrevias(prev => ({...prev, [currEtapa]: [...prev[currEtapa], reader.result]}));
+          setArchivos(prev => ({ ...prev, [currEtapa]: [...prev[currEtapa], file] }));
+          setVistasPrevias(prev => ({ ...prev, [currEtapa]: [...prev[currEtapa], reader.result] }));
         };
         reader.readAsDataURL(file);
       }
@@ -71,12 +73,19 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     setVistasPrevias(prev => ({ ...prev, [currEtapa]: prev[currEtapa].filter((_, i) => i !== index) }));
   };
 
+  // ✅ Al escribir el ROPER, se guarda en localStorage para los próximos reportes
+  const cambiarRoper = (valor) => {
+    const v = valor.toUpperCase();
+    setForm(prev => ({ ...prev, roper: v }));
+    localStorage.setItem('sisifo_roper', v);
+  };
+
   const avanzarEtapa = () => {
     setEnterArmado(false);
     if (etapa === 'INICIO') {
-      if (!form.camara || !form.zona || !form.roper || !form.incidencia || !form.asunto_inicio) 
+      if (!form.camara || !form.zona || !form.roper || !form.incidencia || !form.asunto_inicio)
         return alert("Complete todos los datos iniciales incluyendo la Incidencia.");
-      if (requiereEspecificar(form.incidencia) && !form.incidencia_otro) 
+      if (requiereEspecificar(form.incidencia) && !form.incidencia_otro)
         return alert("Debe especificar el detalle de la incidencia.");
       setEtapa('DESARROLLO');
       setEdicionCampos(false);
@@ -87,7 +96,6 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     }
   };
 
-  // ✅ PASO 3: NO se resetea el form → los datos se mantienen al navegar
   const retrocederEtapa = () => {
     if (etapa === 'FINALIZADO') setEtapa('DESARROLLO');
     else if (etapa === 'DESARROLLO') setEtapa('INICIO');
@@ -100,10 +108,10 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     if (!form.asunto_finalizado || !form.atendido) { setEnterArmado(false); return alert("Complete el cierre."); }
     setEnterArmado(false);
     const idGenerado = Math.floor(Math.random() * 1000000);
-    const incidenciaFinal = requiereEspecificar(form.incidencia) 
-      ? `${form.incidencia} - ${form.incidencia_otro}` 
+    const incidenciaFinal = requiereEspecificar(form.incidencia)
+      ? `${form.incidencia} - ${form.incidencia_otro}`
       : form.incidencia;
-    
+
     const enviarPaquete = async (nombreEtapa, asuntoTexto, atendidoTexto, listaArchivos) => {
       const fd = new FormData();
       fd.append('id_incidencia', idGenerado);
@@ -121,20 +129,21 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
       if (listaArchivos && listaArchivos.length > 0) listaArchivos.forEach(file => fd.append('archivos', file));
       return enviarReporte(fd);
     };
-    
+
     try {
-      if(form.asunto_inicio) await enviarPaquete('INICIO', form.asunto_inicio, '', archivos.inicio);
-      if(form.asunto_desarrollo) await enviarPaquete('DESARROLLO', form.asunto_desarrollo, '', archivos.desarrollo);
-      if(form.asunto_finalizado) await enviarPaquete('FINALIZADO', form.asunto_finalizado, form.atendido, archivos.finalizado);
-      
+      if (form.asunto_inicio) await enviarPaquete('INICIO', form.asunto_inicio, '', archivos.inicio);
+      if (form.asunto_desarrollo) await enviarPaquete('DESARROLLO', form.asunto_desarrollo, '', archivos.desarrollo);
+      if (form.asunto_finalizado) await enviarPaquete('FINALIZADO', form.asunto_finalizado, form.atendido, archivos.finalizado);
+
       const urlBase = window.location.origin.includes('localhost') ? 'http://localhost:3000' : window.location.origin;
       const socketBot = io(urlBase);
       socketBot.emit('enviar_mensaje', { remitente: 'SISTEMA', contenido: `Incidencia #${idGenerado} consolidada.`, es_sistema: true });
       setTimeout(() => socketBot.disconnect(), 1000);
-      
+
       alert(`Reporte enviado: #${idGenerado}`);
       setEtapa('INICIO');
-      setForm({ camara: '', zona: '', roper: '', categoria: '', incidencia: '', incidencia_otro: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
+      // ✅ El ROPER NO se borra al enviar: se mantiene lo que está en pantalla
+      setForm({ camara: '', zona: '', roper: form.roper, categoria: '', incidencia: '', incidencia_otro: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
       setBusquedaIncidencia('');
       setArchivos({ inicio: [], desarrollo: [], finalizado: [] });
       setVistasPrevias({ inicio: [], desarrollo: [], finalizado: [] });
@@ -238,8 +247,8 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
           const file = new File([blob], `evidencia_${currEtapa}_${Date.now()}_${i}.png`, { type: blob.type });
           const reader = new FileReader();
           reader.onloadend = () => {
-            setArchivos(prev => ({...prev, [currEtapa]: [...prev[currEtapa], file]}));
-            setVistasPrevias(prev => ({...prev, [currEtapa]: [...prev[currEtapa], reader.result]}));
+            setArchivos(prev => ({ ...prev, [currEtapa]: [...prev[currEtapa], file] }));
+            setVistasPrevias(prev => ({ ...prev, [currEtapa]: [...prev[currEtapa], reader.result] }));
           };
           reader.readAsDataURL(file);
         }
@@ -249,7 +258,6 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     return () => document.removeEventListener('paste', handlePasteGlobal);
   }, [etapa]);
 
-  const inputStyle = (bloqueado) => ({ padding: '8px', background: bloqueado ? '#f0f0f0' : '#fff', border: '1px solid #ccc', borderRadius: '4px' });
   const bloqueado = etapa !== 'INICIO' && !edicionCampos;
   const esIncidenciaEspecificar = requiereEspecificar(form.incidencia);
 
@@ -268,9 +276,9 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
           </button>
         )}
       </div>
-      
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
-        
+
         <AutocompleteCamara
           value={form.camara}
           onSelect={(camara) => {
@@ -301,8 +309,24 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
           readOnly
         />
 
-        <input style={inputStyle(bloqueado)} type="text" placeholder="ROPER (Encargado del Servicio)" value={form.roper} onChange={e => setForm({...form, roper: e.target.value.toUpperCase()})} disabled={bloqueado} />
-        
+        {/* ✅ ROPER editable la 1ª vez; se autoguarda y queda fijo para el resto del turno */}
+        <input
+          style={{
+            padding: '8px',
+            background: form.roper ? '#f1f8f3' : '#fff',
+            border: `1px solid ${form.roper ? '#28a745' : '#ccc'}`,
+            borderRadius: '4px',
+            color: '#333',
+            fontWeight: 'bold'
+          }}
+          type="text"
+          placeholder="ROPER (escríbelo una vez y se guarda para el turno)"
+          value={form.roper}
+          onChange={(e) => cambiarRoper(e.target.value)}
+          disabled={bloqueado}
+          title="Se guarda automáticamente; se limpia al cerrar sesión"
+        />
+
         {/* ===== INCIDENCIA ===== */}
         {esIncidenciaEspecificar ? (
           <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
@@ -317,7 +341,7 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
               type="text"
               placeholder="Escriba el detalle de la incidencia..."
               value={form.incidencia_otro}
-              onChange={e => setForm({...form, incidencia_otro: e.target.value.toUpperCase()})}
+              onChange={e => setForm({ ...form, incidencia_otro: e.target.value.toUpperCase() })}
               autoFocus
               style={{
                 flex: 1, padding: '10px', border: '2px solid #ff9800', borderRadius: '0 4px 4px 0',
@@ -338,11 +362,11 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
             <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', display: 'block', marginBottom: '5px' }}>
               Incidencia: <span style={{ fontSize: '10px', color: '#888', fontWeight: 'normal' }}>(↑↓ navegar · Enter elegir · Esc cerrar)</span>
             </label>
-            <input 
+            <input
               ref={inputBusquedaRef}
-              type="text" 
-              placeholder="🔍 Escriba para buscar incidencia o categoría..." 
-              value={busquedaIncidencia} 
+              type="text"
+              placeholder="🔍 Escriba para buscar incidencia o categoría..."
+              value={busquedaIncidencia}
               onChange={(e) => {
                 const valor = e.target.value.toUpperCase();
                 setBusquedaIncidencia(valor);
@@ -350,10 +374,10 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
                 setMostrarSugerencias(coincide.length > 0);
                 setIndiceSeleccionado(coincide.length > 0 ? 0 : -1);
                 if (form.incidencia && !valor.includes(form.incidencia.substring(0, 10))) setForm({ ...form, incidencia: '', categoria: '' });
-              }} 
-              onFocus={() => { if (busquedaIncidencia.trim() !== '' && busquedaIncidencia !== form.incidencia) setMostrarSugerencias(true); }} 
+              }}
+              onFocus={() => { if (busquedaIncidencia.trim() !== '' && busquedaIncidencia !== form.incidencia) setMostrarSugerencias(true); }}
               onKeyDown={handleKeyDownBusqueda}
-              style={{ padding: '10px', border: '2px solid #0056b3', borderRadius: '4px', fontSize: '13px', background: '#fff', width: '100%', boxSizing: 'border-box', textTransform: 'uppercase' }} 
+              style={{ padding: '10px', border: '2px solid #0056b3', borderRadius: '4px', fontSize: '13px', background: '#fff', width: '100%', boxSizing: 'border-box', textTransform: 'uppercase' }}
             />
             {mostrarSugerencias && sugerenciasFiltradas.length > 0 && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ccc', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxHeight: '300px', overflowY: 'auto', zIndex: 1000, marginTop: '5px' }}>
@@ -382,16 +406,16 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
         <input style={{ padding: '8px', background: form.categoria ? '#e9ecef' : '#fff', border: '1px solid #ccc', borderRadius: '4px', color: form.categoria ? '#495057' : '#6c757d', fontStyle: form.categoria ? 'normal' : 'italic', fontWeight: form.categoria ? 'bold' : 'normal' }} type="text" placeholder="Categoría (autocompletada)" value={form.categoria} readOnly />
       </div>
 
-      {/* ✅ PASO 3: bloques por etapa con display:none (NUNCA se desmontan → nada se pierde al ir/volver) */}
+      {/* ✅ Paso 3: bloques por etapa con display:none (nunca se desmontan → no se pierden unidades ni conclusión) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ display: etapa === 'INICIO' ? 'block' : 'none' }}>
-          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Asunto Inicial... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_inicio} onChange={e => setForm({...form, asunto_inicio: e.target.value.toUpperCase()})} />
+          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Asunto Inicial... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_inicio} onChange={e => setForm({ ...form, asunto_inicio: e.target.value.toUpperCase() })} />
         </div>
         <div style={{ display: etapa === 'DESARROLLO' ? 'block' : 'none' }}>
-          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Desarrollo... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_desarrollo} onChange={e => setForm({...form, asunto_desarrollo: e.target.value.toUpperCase()})} />
+          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Desarrollo... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_desarrollo} onChange={e => setForm({ ...form, asunto_desarrollo: e.target.value.toUpperCase() })} />
         </div>
         <div style={{ display: etapa === 'FINALIZADO' ? 'block' : 'none' }}>
-          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Conclusión / Reporte Final... (Enter = enviar · Shift+Enter = nueva línea)" value={form.asunto_finalizado} onChange={e => setForm({...form, asunto_finalizado: e.target.value.toUpperCase()})} />
+          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Conclusión / Reporte Final... (Enter = enviar · Shift+Enter = nueva línea)" value={form.asunto_finalizado} onChange={e => setForm({ ...form, asunto_finalizado: e.target.value.toUpperCase() })} />
           <AutocompleteAtendido onChange={(valor) => setForm(prev => ({ ...prev, atendido: valor }))} />
         </div>
 

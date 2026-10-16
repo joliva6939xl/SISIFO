@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { obtenerReportesPorOperador, obtenerReportesGlobales, obtenerUsuariosLista } from '../api/api';
 import { Eye, FileText, ArrowLeft, Image as ImageIcon, BarChart2, Search, Filter, ChevronLeft, ChevronRight, MapPin, Calendar, User, Users, Activity, BarChart, Download, Shield } from 'lucide-react';
+import NotificadorTiempoReal from './NotificadorTiempoReal';
 
 function Almacen({ usuarioLogueado, cargo }) {
   const [reportesAgrupados, setReportesAgrupados] = useState({});
@@ -123,7 +124,6 @@ function Almacen({ usuarioLogueado, cargo }) {
     return { id, inicio, paquete };
   });
 
-  // LÓGICA DE FILTRADO CORREGIDA Y ROBUSTA
   const expedientesFiltrados = expedientesArray.filter(exp => {
     const roperTexto = (exp.inicio.roper || '').toUpperCase();
     const operadorTexto = (exp.inicio.operador || '').toUpperCase();
@@ -206,161 +206,165 @@ function Almacen({ usuarioLogueado, cargo }) {
     );
   }
 
+  // ✅ CORRECCIÓN: envolvemos el Notificador y el div principal en un Fragment <>...</>
   return (
-    <div style={{ fontFamily: 'Arial' }}>
-      
-      {cargo === 'ANALISTA' && !informeSeleccionado && (
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '20px' }}>
-          <button onClick={() => { setVistaAnalista('GLOBAL'); setFiltroOperador(''); setBusqueda(''); setFiltroRoper(''); setPaginaActual(1); }} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: (vistaAnalista === 'GLOBAL' && filtroOperador === '') ? '#0056b3' : '#e9ecef', color: (vistaAnalista === 'GLOBAL' && filtroOperador === '') ? 'white' : '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}><Activity size={16} /> Panel Global</button>
-          <button onClick={() => setVistaAnalista('USUARIOS')} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#e9ecef', color: '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}><Users size={16} /> Ver Usuarios</button>
-        </div>
-      )}
-
-      <div style={{ textAlign: 'center', marginBottom: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
-        <h3 style={{ margin: 0, color: '#333' }}>
-          <FileText size={20} style={{ verticalAlign: 'middle', marginRight: '8px' }} />
-          {cargo === 'ANALISTA' ? 'Panel Global de Analítica' : `Historial y Productividad de: ${usuarioLogueado}`}
-        </h3>
+    <>
+      <NotificadorTiempoReal />
+      <div style={{ fontFamily: 'Arial' }}>
         
-        {cargo === 'ANALISTA' && (
-          <button onClick={() => handleExportar(expedientesFiltrados)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-            <Download size={16} /> Excel
-          </button>
+        {cargo === 'ANALISTA' && !informeSeleccionado && (
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '20px' }}>
+            <button onClick={() => { setVistaAnalista('GLOBAL'); setFiltroOperador(''); setBusqueda(''); setFiltroRoper(''); setPaginaActual(1); }} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: (vistaAnalista === 'GLOBAL' && filtroOperador === '') ? '#0056b3' : '#e9ecef', color: (vistaAnalista === 'GLOBAL' && filtroOperador === '') ? 'white' : '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}><Activity size={16} /> Panel Global</button>
+            <button onClick={() => setVistaAnalista('USUARIOS')} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#e9ecef', color: '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}><Users size={16} /> Ver Usuarios</button>
+          </div>
         )}
-      </div>
 
-      {expedientesArray.length === 0 ? (
-        <p style={{ textAlign: 'center' }}>No hay métricas registradas en la base de datos.</p>
-      ) : (
-        <>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', background: '#e9ecef', padding: '10px', borderRadius: '5px', flexWrap: 'wrap' }}>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 120px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
-              <Search size={16} color="#666" />
-              <input type="text" placeholder="Cámara o ID" value={busqueda} onChange={(e) => { setBusqueda(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
-            </div>
-
-            {cargo === 'ANALISTA' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 120px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                <User size={16} color="#666" />
-                <input type="text" placeholder="Operador..." value={filtroOperador} onChange={(e) => { setFiltroOperador(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
-              </div>
-            )}
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 100px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
-              <Filter size={16} color="#666" />
-              <select value={filtroTurno} onChange={(e) => { setFiltroTurno(e.target.value); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', background: 'transparent' }}>
-                <option value="">Turnos</option>
-                <option value="MAÑANA">Mañana</option>
-                <option value="TARDE">Tarde</option>
-                <option value="NOCHE">Noche</option>
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 100px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
-              <MapPin size={16} color="#666" />
-              <input type="text" placeholder="Zona..." value={filtroZona} onChange={(e) => { setFiltroZona(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 120px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
-              <Shield size={16} color="#666" />
-              <input type="text" placeholder="Roper..." value={filtroRoper} onChange={(e) => { setFiltroRoper(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 130px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
-              <Calendar size={16} color="#666" />
-              <input type="date" value={filtroFecha} onChange={(e) => { setFiltroFecha(e.target.value); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', color: '#333' }} />
-            </div>
-
-          </div>
-
-          <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '20px' }}>
-            <h4 style={{ margin: '0 0 15px 0', color: '#0056b3', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <BarChart2 size={18} /> Resultados ({expedientesFiltrados.length} Incidencias)
-            </h4>
-            {zonasOrdenadas.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
-                {zonasOrdenadas.map(([zona, cantidad]) => (
-                  <div key={zona} style={{ background: '#fff', padding: '10px', borderRadius: '5px', border: '1px solid #eee', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                    <div style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>ZONA {zona}</div>
-                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#28a745' }}>{cantidad}</div>
-                    <div style={{ fontSize: '11px', color: '#999' }}>Ingresos</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ margin: 0, fontSize: '13px', color: '#666', textAlign: 'center' }}>No hay resultados para estos filtros.</p>
-            )}
-          </div>
+        <div style={{ textAlign: 'center', marginBottom: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+          <h3 style={{ margin: 0, color: '#333' }}>
+            <FileText size={20} style={{ verticalAlign: 'middle', marginRight: '8px' }} />
+            {cargo === 'ANALISTA' ? 'Panel Global de Analítica' : `Historial y Productividad de: ${usuarioLogueado}`}
+          </h3>
           
-          {cargo === 'ANALISTA' && filtroOperador === '' ? (
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-              <h4 style={{ textAlign: 'center', margin: '0 0 20px 0', color: '#333', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px' }}>
-                <BarChart size={18} color="#0056b3"/> Gráfico de Incidencias por Zona
+          {cargo === 'ANALISTA' && (
+            <button onClick={() => handleExportar(expedientesFiltrados)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+              <Download size={16} /> Excel
+            </button>
+          )}
+        </div>
+
+        {expedientesArray.length === 0 ? (
+          <p style={{ textAlign: 'center' }}>No hay métricas registradas en la base de datos.</p>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', background: '#e9ecef', padding: '10px', borderRadius: '5px', flexWrap: 'wrap' }}>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 120px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                <Search size={16} color="#666" />
+                <input type="text" placeholder="Cámara o ID" value={busqueda} onChange={(e) => { setBusqueda(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
+              </div>
+
+              {cargo === 'ANALISTA' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 120px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                  <User size={16} color="#666" />
+                  <input type="text" placeholder="Operador..." value={filtroOperador} onChange={(e) => { setFiltroOperador(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 100px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                <Filter size={16} color="#666" />
+                <select value={filtroTurno} onChange={(e) => { setFiltroTurno(e.target.value); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', background: 'transparent' }}>
+                  <option value="">Turnos</option>
+                  <option value="MAÑANA">Mañana</option>
+                  <option value="TARDE">Tarde</option>
+                  <option value="NOCHE">Noche</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 100px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                <MapPin size={16} color="#666" />
+                <input type="text" placeholder="Zona..." value={filtroZona} onChange={(e) => { setFiltroZona(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 120px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                <Shield size={16} color="#666" />
+                <input type="text" placeholder="Roper..." value={filtroRoper} onChange={(e) => { setFiltroRoper(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 130px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                <Calendar size={16} color="#666" />
+                <input type="date" value={filtroFecha} onChange={(e) => { setFiltroFecha(e.target.value); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', color: '#333' }} />
+              </div>
+
+            </div>
+
+            <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '20px' }}>
+              <h4 style={{ margin: '0 0 15px 0', color: '#0056b3', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <BarChart2 size={18} /> Resultados ({expedientesFiltrados.length} Incidencias)
               </h4>
               {zonasOrdenadas.length > 0 ? (
-                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', height: '250px', padding: '10px 0', borderBottom: '2px solid #eee' }}>
-                  {zonasOrdenadas.map(([zona, cantidad]) => {
-                    const alturaBarra = (cantidad / maxIncidencias) * 180;
-                    return (
-                      <div key={zona} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', width: '80px', height: '220px' }}>
-                        <span style={{ marginBottom: '8px', fontWeight: 'bold', color: '#0056b3' }}>{cantidad}</span>
-                        <div style={{ width: '50px', height: `${alturaBarra}px`, background: '#28a745', borderRadius: '6px 6px 0 0', transition: '0.5s' }} />
-                        <span style={{ marginTop: '10px', fontSize: '12px', fontWeight: 'bold', color: '#555' }}>{zona}</span>
-                      </div>
-                    );
-                  })}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+                  {zonasOrdenadas.map(([zona, cantidad]) => (
+                    <div key={zona} style={{ background: '#fff', padding: '10px', borderRadius: '5px', border: '1px solid #eee', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                      <div style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>ZONA {zona}</div>
+                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#28a745' }}>{cantidad}</div>
+                      <div style={{ fontSize: '11px', color: '#999' }}>Ingresos</div>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <p style={{ textAlign: 'center', color: '#999' }}>Sin datos suficientes para graficar.</p>
+                <p style={{ margin: 0, fontSize: '13px', color: '#666', textAlign: 'center' }}>No hay resultados para estos filtros.</p>
               )}
             </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '700px' }}>
-                <thead>
-                  <tr style={{ background: '#333', color: 'white', textAlign: 'left' }}>
-                    <th style={{ padding: '10px', border: '1px solid #ddd' }}>ID</th>
-                    {cargo === 'ANALISTA' && <th style={{ padding: '10px', border: '1px solid #ddd' }}>Operador</th>}
-                    <th style={{ padding: '10px', border: '1px solid #ddd' }}>Turno</th>
-                    <th style={{ padding: '10px', border: '1px solid #ddd' }}>Fecha</th>
-                    <th style={{ padding: '10px', border: '1px solid #ddd' }}>Cámara</th>
-                    <th style={{ padding: '10px', border: '1px solid #ddd' }}>Zona</th>
-                    <th style={{ padding: '10px', border: '1px solid #ddd' }}>Roper</th>
-                    <th style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'center' }}>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expedientesPaginados.map((exp) => (
-                    <tr key={exp.id} style={{ background: '#fff', borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '10px', border: '1px solid #ddd', fontWeight: 'bold' }}>#{exp.id}</td>
-                      {cargo === 'ANALISTA' && <td style={{ padding: '10px', border: '1px solid #ddd', color: '#28a745', fontWeight: 'bold' }}>{exp.inicio.operador}</td>}
-                      <td style={{ padding: '10px', border: '1px solid #ddd', color: '#0056b3', fontWeight: 'bold' }}>{exp.inicio.turno || '-'}</td>
-                      <td style={{ padding: '10px', border: '1px solid #ddd' }}>{exp.inicio.fecha}</td>
-                      <td style={{ padding: '10px', border: '1px solid #ddd' }}>{exp.inicio.camara}</td>
-                      <td style={{ padding: '10px', border: '1px solid #ddd' }}>{(exp.inicio.zona || '').toUpperCase()}</td>
-                      <td style={{ padding: '10px', border: '1px solid #ddd', color: '#d32f2f', fontWeight: 'bold' }}>{(exp.inicio.roper || '-').toUpperCase()}</td>
-                      <td style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'center' }}>
-                        <button onClick={() => setInformeSeleccionado(exp.paquete)} style={{ background: '#0056b3', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                          <Eye size={14} /> Abrir
-                        </button>
-                      </td>
+            
+            {cargo === 'ANALISTA' && filtroOperador === '' ? (
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+                <h4 style={{ textAlign: 'center', margin: '0 0 20px 0', color: '#333', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px' }}>
+                  <BarChart size={18} color="#0056b3"/> Gráfico de Incidencias por Zona
+                </h4>
+                {zonasOrdenadas.length > 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', height: '250px', padding: '10px 0', borderBottom: '2px solid #eee' }}>
+                    {zonasOrdenadas.map(([zona, cantidad]) => {
+                      const alturaBarra = (cantidad / maxIncidencias) * 180;
+                      return (
+                        <div key={zona} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', width: '80px', height: '220px' }}>
+                          <span style={{ marginBottom: '8px', fontWeight: 'bold', color: '#0056b3' }}>{cantidad}</span>
+                          <div style={{ width: '50px', height: `${alturaBarra}px`, background: '#28a745', borderRadius: '6px 6px 0 0', transition: '0.5s' }} />
+                          <span style={{ marginTop: '10px', fontSize: '12px', fontWeight: 'bold', color: '#555' }}>{zona}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ textAlign: 'center', color: '#999' }}>Sin datos suficientes para graficar.</p>
+                )}
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '700px' }}>
+                  <thead>
+                    <tr style={{ background: '#333', color: 'white', textAlign: 'left' }}>
+                      <th style={{ padding: '10px', border: '1px solid #ddd' }}>ID</th>
+                      {cargo === 'ANALISTA' && <th style={{ padding: '10px', border: '1px solid #ddd' }}>Operador</th>}
+                      <th style={{ padding: '10px', border: '1px solid #ddd' }}>Turno</th>
+                      <th style={{ padding: '10px', border: '1px solid #ddd' }}>Fecha</th>
+                      <th style={{ padding: '10px', border: '1px solid #ddd' }}>Cámara</th>
+                      <th style={{ padding: '10px', border: '1px solid #ddd' }}>Zona</th>
+                      <th style={{ padding: '10px', border: '1px solid #ddd' }}>Roper</th>
+                      <th style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'center' }}>Acción</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {totalPaginas > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', padding: '10px', background: '#f8f9fa', borderRadius: '5px', border: '1px solid #ddd' }}>
-                  <button onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))} disabled={paginaActual === 1} style={{ padding: '5px 10px', background: '#0056b3', color: 'white', border: 'none', borderRadius: '4px' }}><ChevronLeft size={16} /> Anterior</button>
-                  <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Página {paginaActual} de {totalPaginas}</span>
-                  <button onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))} disabled={paginaActual === totalPaginas} style={{ padding: '5px 10px', background: '#0056b3', color: 'white', border: 'none', borderRadius: '4px' }}>Siguiente <ChevronRight size={16} /></button>
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </div>
+                  </thead>
+                  <tbody>
+                    {expedientesPaginados.map((exp) => (
+                      <tr key={exp.id} style={{ background: '#fff', borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '10px', border: '1px solid #ddd', fontWeight: 'bold' }}>#{exp.id}</td>
+                        {cargo === 'ANALISTA' && <td style={{ padding: '10px', border: '1px solid #ddd', color: '#28a745', fontWeight: 'bold' }}>{exp.inicio.operador}</td>}
+                        <td style={{ padding: '10px', border: '1px solid #ddd', color: '#0056b3', fontWeight: 'bold' }}>{exp.inicio.turno || '-'}</td>
+                        <td style={{ padding: '10px', border: '1px solid #ddd' }}>{exp.inicio.fecha}</td>
+                        <td style={{ padding: '10px', border: '1px solid #ddd' }}>{exp.inicio.camara}</td>
+                        <td style={{ padding: '10px', border: '1px solid #ddd' }}>{(exp.inicio.zona || '').toUpperCase()}</td>
+                        <td style={{ padding: '10px', border: '1px solid #ddd', color: '#d32f2f', fontWeight: 'bold' }}>{(exp.inicio.roper || '-').toUpperCase()}</td>
+                        <td style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'center' }}>
+                          <button onClick={() => setInformeSeleccionado(exp.paquete)} style={{ background: '#0056b3', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                            <Eye size={14} /> Abrir
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {totalPaginas > 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', padding: '10px', background: '#f8f9fa', borderRadius: '5px', border: '1px solid #ddd' }}>
+                    <button onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))} disabled={paginaActual === 1} style={{ padding: '5px 10px', background: '#0056b3', color: 'white', border: 'none', borderRadius: '4px' }}><ChevronLeft size={16} /> Anterior</button>
+                    <span style={{ fontSize: '13px', fontWeight: 'bold' }}>Página {paginaActual} de {totalPaginas}</span>
+                    <button onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))} disabled={paginaActual === totalPaginas} style={{ padding: '5px 10px', background: '#0056b3', color: 'white', border: 'none', borderRadius: '4px' }}>Siguiente <ChevronRight size={16} /></button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
   );
 }
 export default Almacen;
