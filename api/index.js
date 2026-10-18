@@ -159,6 +159,8 @@ app.get('/api/reportes/:operador', async (req, res) => {
 });
 
 app.post('/api/exportar', exportController.descargarReporte);
+app.get('/galeria/:id', exportController.galeria);
+
 
 app.post('/api/salas', async (req, res) => {
   const { nombre_sala, creado_por, tipo } = req.body;
@@ -248,15 +250,19 @@ app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
       [id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno]
     );
 
-    // ✅ NUEVO: gritar al panel del analista en tiempo real (no afecta nada más)
-    io.emit('nuevo_reporte_analista', {
-      usuario: operador,
-      fecha: new Date().toLocaleString('es-PE'),
-      turno: turno,
-      zona: zona,
-      categoria: categoria,
-      incidencia: incidencia
-    });
+    // ✅ Solo notificar cuando el reporte esté COMPLETO (etapa FINALIZADO)
+    if (etapa && etapa.toUpperCase() === 'FINALIZADO') {
+      io.emit('nuevo_reporte_analista', {
+        id_incidencia: id_incidencia,
+        usuario: operador,
+        fecha: new Date().toLocaleString('es-PE'),
+        turno: turno,
+        zona: zona,
+        categoria: categoria,
+        incidencia: incidencia
+      });
+    }
+
 
     if (etapa && etapa.toUpperCase() === 'FINALIZADO') {
       try {

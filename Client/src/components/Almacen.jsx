@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { obtenerReportesPorOperador, obtenerReportesGlobales, obtenerUsuariosLista } from '../api/api';
-import { Eye, FileText, ArrowLeft, Image as ImageIcon, BarChart2, Search, Filter, ChevronLeft, ChevronRight, MapPin, Calendar, User, Users, Activity, BarChart, Download, Shield } from 'lucide-react';
+import { Eye, FileText, ArrowLeft, Image as ImageIcon, BarChart2, Search, Filter, ChevronLeft, ChevronRight, MapPin, Calendar, User, Users, Activity, Download, Shield } from 'lucide-react';
 import NotificadorTiempoReal from './NotificadorTiempoReal';
+import FeedEnVivo from './FeedEnVivo';
 
 function Almacen({ usuarioLogueado, cargo }) {
   const [reportesAgrupados, setReportesAgrupados] = useState({});
@@ -12,6 +13,7 @@ function Almacen({ usuarioLogueado, cargo }) {
   const [listaUsuariosBD, setListaUsuariosBD] = useState([]);
 
   const [busqueda, setBusqueda] = useState('');
+  const [busquedaId, setBusquedaId] = useState(''); // ✅ ÚNICO hook nuevo, arriba en posición válida
   const [filtroTurno, setFiltroTurno] = useState('');
   const [filtroZona, setFiltroZona] = useState('');
   const [filtroFecha, setFiltroFecha] = useState(''); 
@@ -75,7 +77,7 @@ function Almacen({ usuarioLogueado, cargo }) {
       a.href = url;
       const marcaTiempo = new Date().getTime();
       const nomArchivo = filtroOperador ? filtroOperador : 'GLOBAL';
-      a.download = `SISIFO_${nomArchivo}_${marcaTiempo}.zip`;
+      a.download = `SISIFO_${nomArchivo}_${marcaTiempo}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -84,13 +86,20 @@ function Almacen({ usuarioLogueado, cargo }) {
     }
   };
 
+  const irAlAlmacenDelOperador = (usuarioOperador) => {
+    setFiltroOperador(usuarioOperador.toUpperCase());
+    setVistaAnalista('GLOBAL');
+    setPaginaActual(1);
+    window.scrollTo({ top: 300, behavior: 'smooth' });
+  };
+
   if (cargando) return <p style={{ textAlign: 'center', marginTop: '50px' }}>Cargando registros...</p>;
 
   if (cargo === 'ANALISTA' && vistaAnalista === 'USUARIOS' && !informeSeleccionado) {
     return (
       <div style={{ fontFamily: 'Arial' }}>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '20px' }}>
-          <button onClick={() => { setVistaAnalista('GLOBAL'); setFiltroOperador(''); setBusqueda(''); setFiltroRoper(''); setPaginaActual(1); }} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#e9ecef', color: '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}><Activity size={16} /> Panel Global</button>
+          <button onClick={() => { setVistaAnalista('GLOBAL'); setFiltroOperador(''); setBusqueda(''); setBusquedaId(''); setFiltroRoper(''); setPaginaActual(1); }} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#e9ecef', color: '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}><Activity size={16} /> Panel Global</button>
           <button style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#0056b3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'default', fontWeight: 'bold' }}><Users size={16} /> Ver Usuarios</button>
         </div>
 
@@ -118,11 +127,30 @@ function Almacen({ usuarioLogueado, cargo }) {
     );
   }
 
-  const expedientesArray = Object.keys(reportesAgrupados).map(id => {
-    const paquete = reportesAgrupados[id];
-    const inicio = paquete.find(p => p.etapa === 'INICIO') || paquete[0];
-    return { id, inicio, paquete };
-  });
+  const parsearFecha = (fechaStr) => {
+    if (!fechaStr) return new Date(0);
+    const [fecha, hora] = fechaStr.split(' ');
+    const [dd, mm, yyyy] = fecha.split('/');
+    const [hh, mi] = (hora || '00:00').split(':');
+    return new Date(yyyy, mm - 1, dd, hh, mi);
+  };
+
+  const expedientesArray = Object.keys(reportesAgrupados)
+    .map(id => {
+      const paquete = reportesAgrupados[id];
+      const inicio = paquete.find(p => p.etapa === 'INICIO') || paquete[0];
+      return { id, inicio, paquete };
+    })
+    .sort((a, b) => parsearFecha(b.inicio.fecha) - parsearFecha(a.inicio.fecha));
+
+  // ✅ Resultados de búsqueda por N° de reporte: cálculo DIRECTO en el render (sin useEffect, sin bucle)
+  const terminoId = busquedaId.trim();
+  const resultadosBusquedaId = (cargo === 'ANALISTA' && terminoId !== '')
+    ? expedientesArray.filter(exp =>
+        String(exp.id).includes(terminoId) ||
+        String(exp.inicio.id_incidencia).includes(terminoId)
+      )
+    : [];
 
   const expedientesFiltrados = expedientesArray.filter(exp => {
     const roperTexto = (exp.inicio.roper || '').toUpperCase();
@@ -148,12 +176,13 @@ function Almacen({ usuarioLogueado, cargo }) {
   });
 
   const metricasZonas = {};
-  expedientesFiltrados.forEach(exp => {
-    const zonaTexto = (exp.inicio.zona || 'DESCONOCIDA').toUpperCase().trim();
-    metricasZonas[zonaTexto] = (metricasZonas[zonaTexto] || 0) + 1;
-  });
+  if (cargo === 'ANALISTA') {
+    expedientesFiltrados.forEach(exp => {
+      const zonaTexto = (exp.inicio.zona || 'DESCONOCIDA').toUpperCase().trim();
+      metricasZonas[zonaTexto] = (metricasZonas[zonaTexto] || 0) + 1;
+    });
+  }
   const zonasOrdenadas = Object.entries(metricasZonas).sort((a, b) => b[1] - a[1]);
-  const maxIncidencias = zonasOrdenadas.length > 0 ? Math.max(...zonasOrdenadas.map(z => z[1])) : 1;
 
   const totalPaginas = Math.ceil(expedientesFiltrados.length / REGISTROS_POR_PAGINA) || 1;
   const indiceInicial = (paginaActual - 1) * REGISTROS_POR_PAGINA;
@@ -206,7 +235,6 @@ function Almacen({ usuarioLogueado, cargo }) {
     );
   }
 
-  // ✅ CORRECCIÓN: envolvemos el Notificador y el div principal en un Fragment <>...</>
   return (
     <>
       <NotificadorTiempoReal />
@@ -214,7 +242,7 @@ function Almacen({ usuarioLogueado, cargo }) {
         
         {cargo === 'ANALISTA' && !informeSeleccionado && (
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '20px' }}>
-            <button onClick={() => { setVistaAnalista('GLOBAL'); setFiltroOperador(''); setBusqueda(''); setFiltroRoper(''); setPaginaActual(1); }} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: (vistaAnalista === 'GLOBAL' && filtroOperador === '') ? '#0056b3' : '#e9ecef', color: (vistaAnalista === 'GLOBAL' && filtroOperador === '') ? 'white' : '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}><Activity size={16} /> Panel Global</button>
+            <button onClick={() => { setVistaAnalista('GLOBAL'); setFiltroOperador(''); setBusqueda(''); setBusquedaId(''); setFiltroRoper(''); setPaginaActual(1); }} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: (vistaAnalista === 'GLOBAL' && filtroOperador === '') ? '#0056b3' : '#e9ecef', color: (vistaAnalista === 'GLOBAL' && filtroOperador === '') ? 'white' : '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}><Activity size={16} /> Panel Global</button>
             <button onClick={() => setVistaAnalista('USUARIOS')} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '8px 15px', background: '#e9ecef', color: '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}><Users size={16} /> Ver Usuarios</button>
           </div>
         )}
@@ -238,10 +266,18 @@ function Almacen({ usuarioLogueado, cargo }) {
           <>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', background: '#e9ecef', padding: '10px', borderRadius: '5px', flexWrap: 'wrap' }}>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 120px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                <Search size={16} color="#666" />
-                <input type="text" placeholder="Cámara o ID" value={busqueda} onChange={(e) => { setBusqueda(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
-              </div>
+              {/* ✅ Input #1 bifurcado: ANALISTA busca por N° de reporte; OPERADOR mantiene "Cámara o ID" intacto */}
+              {cargo === 'ANALISTA' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 160px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                  <Search size={16} color="#666" />
+                  <input type="text" placeholder="N° de Reporte..." value={busquedaId} onChange={(e) => setBusquedaId(e.target.value)} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px' }} />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 120px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                  <Search size={16} color="#666" />
+                  <input type="text" placeholder="Cámara o ID" value={busqueda} onChange={(e) => { setBusqueda(e.target.value.toUpperCase()); setPaginaActual(1); }} style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px', textTransform: 'uppercase' }} />
+                </div>
+              )}
 
               {cargo === 'ANALISTA' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '1 1 120px', background: 'white', padding: '5px 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
@@ -277,47 +313,65 @@ function Almacen({ usuarioLogueado, cargo }) {
 
             </div>
 
-            <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '20px' }}>
-              <h4 style={{ margin: '0 0 15px 0', color: '#0056b3', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <BarChart2 size={18} /> Resultados ({expedientesFiltrados.length} Incidencias)
-              </h4>
-              {zonasOrdenadas.length > 0 ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
-                  {zonasOrdenadas.map(([zona, cantidad]) => (
-                    <div key={zona} style={{ background: '#fff', padding: '10px', borderRadius: '5px', border: '1px solid #eee', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                      <div style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>ZONA {zona}</div>
-                      <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#28a745' }}>{cantidad}</div>
-                      <div style={{ fontSize: '11px', color: '#999' }}>Ingresos</div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ margin: 0, fontSize: '13px', color: '#666', textAlign: 'center' }}>No hay resultados para estos filtros.</p>
-              )}
-            </div>
-            
-            {cargo === 'ANALISTA' && filtroOperador === '' ? (
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-                <h4 style={{ textAlign: 'center', margin: '0 0 20px 0', color: '#333', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px' }}>
-                  <BarChart size={18} color="#0056b3"/> Gráfico de Incidencias por Zona
+            {cargo === 'ANALISTA' && (
+              <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '20px' }}>
+                <h4 style={{ margin: '0 0 15px 0', color: '#0056b3', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <BarChart2 size={18} /> Resultados ({expedientesFiltrados.length} Incidencias)
                 </h4>
                 {zonasOrdenadas.length > 0 ? (
-                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', height: '250px', padding: '10px 0', borderBottom: '2px solid #eee' }}>
-                    {zonasOrdenadas.map(([zona, cantidad]) => {
-                      const alturaBarra = (cantidad / maxIncidencias) * 180;
-                      return (
-                        <div key={zona} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', width: '80px', height: '220px' }}>
-                          <span style={{ marginBottom: '8px', fontWeight: 'bold', color: '#0056b3' }}>{cantidad}</span>
-                          <div style={{ width: '50px', height: `${alturaBarra}px`, background: '#28a745', borderRadius: '6px 6px 0 0', transition: '0.5s' }} />
-                          <span style={{ marginTop: '10px', fontSize: '12px', fontWeight: 'bold', color: '#555' }}>{zona}</span>
-                        </div>
-                      );
-                    })}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+                    {zonasOrdenadas.map(([zona, cantidad]) => (
+                      <div key={zona} style={{ background: '#fff', padding: '10px', borderRadius: '5px', border: '1px solid #eee', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                        <div style={{ fontSize: '11px', color: '#666', fontWeight: 'bold', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>ZONA {zona}</div>
+                        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#28a745' }}>{cantidad}</div>
+                        <div style={{ fontSize: '11px', color: '#999' }}>Ingresos</div>
+                      </div>
+                    ))}
                   </div>
                 ) : (
-                  <p style={{ textAlign: 'center', color: '#999' }}>Sin datos suficientes para graficar.</p>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#666', textAlign: 'center' }}>No hay resultados para estos filtros.</p>
                 )}
               </div>
+            )}
+            
+            {/* ✅ Bifurcación del feed: si el analista escribió un N°, muestra resultados; si no, Feed en Vivo. OPERADOR siempre ve la tabla. */}
+            {cargo === 'ANALISTA' && filtroOperador === '' ? (
+              terminoId !== '' ? (
+                <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #ddd', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+                  <h4 style={{ color: '#0056b3', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Search size={18} /> Resultados para "{terminoId}" ({resultadosBusquedaId.length})
+                  </h4>
+                  {resultadosBusquedaId.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {resultadosBusquedaId.map((exp) => (
+                        <div 
+                          key={exp.id}
+                          onClick={() => irAlAlmacenDelOperador(exp.inicio.operador)}
+                          style={{ background: '#f0f7ff', borderLeft: '4px solid #0056b3', borderRadius: '6px', padding: '12px', cursor: 'pointer' }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ background: '#0056b3', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold' }}>#{exp.id}</span>
+                            <span style={{ fontSize: '11px', color: '#666' }}>{exp.inicio.fecha}</span>
+                          </div>
+                          <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', marginBottom: '4px' }}> 👤 {exp.inicio.operador}</div>
+                          <div style={{ display: 'flex', gap: '10px', fontSize: '11px', color: '#666', flexWrap: 'wrap' }}>
+                            <span>🕐 {exp.inicio.turno || '-'}</span>
+                            <span>📍 {(exp.inicio.zona || '').toUpperCase()}</span>
+                            <span>📷 {exp.inicio.camara}</span>
+                          </div>
+                          <div style={{ marginTop: '6px', fontSize: '12px', color: '#0056b3', fontWeight: '600' }}>
+                            {exp.inicio.categoria} — {exp.inicio.incidencia}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ textAlign: 'center', color: '#999', padding: '20px' }}>No se encontraron reportes con el N° "{terminoId}".</p>
+                  )}
+                </div>
+              ) : (
+                <FeedEnVivo onVerReporte={irAlAlmacenDelOperador} />
+              )
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '700px' }}>
