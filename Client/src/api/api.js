@@ -52,12 +52,16 @@ export const actualizarEstadoUsuario = (id, data) => {
   return axios.put(`${API_URL}/usuarios/${id}/estado`, data);
 };
 
+// ✅ NUEVO: Función para cambiar el cargo
+export const actualizarCargoUsuario = (id, data) => {
+  return axios.put(`${API_URL}/usuarios/${id}/cargo`, data);
+};
+
 export const configurarOTP = async (datos) => {
   try {
     const res = await axios.post(`${API_URL}/configurar-otp`, datos);
     return res.data;
   } catch (err) {
-    // Usamos 'err' en el console.warn para que ESLint no marque "no-unused-vars"
     console.warn('Endpoint OTP no disponible, usando modo mock:', err.message);
     return { 
       qr: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=MockOTP_${datos.usuario}`,

@@ -1,0 +1,84 @@
+=============================================================
+  MANUAL DE INSTALACIÓN - SISTEMA SISIFO
+  Sistema de Monitoreo Municipal
+=============================================================
+
+REQUISITOS PREVIOS (Solo se instalan una vez):
+
+1. INSTALAR NODE.JS
+   - Descargue la versión LTS desde: https://nodejs.org/
+   - Instale dando "Next" a todo
+   - Reinicie la computadora
+
+2. INSTALAR POSTGRESQL
+   - Descargue desde: https://www.postgresql.org/download/windows/
+   - Durante la instalación, cuando pida CONTRASEÑA para el 
+     usuario "postgres", escriba exactamente: 1
+   - Termine la instalación (puede desmarcar "Stack Builder" al final)
+
+3. CONFIGURAR GOOGLE AUTHENTICATOR (Para el usuario CALL CENTER)
+   - Instale Google Authenticator en su celular:
+     * Android: https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2
+     * iPhone: https://apps.apple.com/us/app/google-authenticator/id388497605
+   - Abra la app y toque "+" para agregar una cuenta
+   - Seleccione "Escanear código QR"
+   - Escanee el código QR desde esta URL:
+     https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/SISIFO:ccenter?secret=JBSWY3DPEHPK3PXP&issuer=SISIFO
+   - La app mostrará un código de 6 dígitos que cambia cada 30 segundos
+
+=============================================================
+  PARA INICIAR EL SISTEMA (Cada vez que encienda la PC):
+=============================================================
+
+1. Haga DOBLE CLIC en el archivo: "0_INICIAR_SISTEMA.bat"
+2. El sistema instalará lo que le falte automáticamente
+3. Se abrirán dos ventanas negras (NO LAS CIERRE)
+4. Se abrirá Google Chrome automáticamente en el sistema
+5. ¡Listo! Puede comenzar a trabajar
+
+=============================================================
+  CREDENCIALES DE ACCESO INICIAL:
+=============================================================
+
+Usuario: ccenter
+Contraseña: El código de 6 dígitos que muestra Google Authenticator
+            (cambia cada 30 segundos)
+
+=============================================================
+  PARA LOS 14 OPERADORES:
+=============================================================
+
+Los operadores NO necesitan instalar nada. Solo deben:
+1. Abrir Google Chrome en sus computadoras
+2. Escribir la dirección IP de esta computadora principal
+   Ejemplo: http://192.168.1.50:5173
+   (Reemplazar 192.168.1.50 por la IP real de esta PC)
+3. Ingresar con su usuario y contraseña asignados
+
+Para conocer la IP de esta computadora:
+- Abra CMD (Símbolo del sistema)
+- Escriba: ipconfig
+- Busque "Dirección IPv4" (ejemplo: 192.168.1.50)
+
+=============================================================
+  SOPORTE TÉCNICO:
+=============================================================
+
+Si el sistema no arranca:
+1. Verifique que Node.js esté instalado: abra CMD y escriba "node -v"
+2. Verifique que PostgreSQL esté corriendo: abra "Servicios" de Windows
+   y busque "postgresql-x64-16"
+3. Verifique que el archivo "api/.env" tenga la contraseña correcta: 1
+
+=============================================================
+  NOTAS IMPORTANTES:
+=============================================================
+
+- NO cierre las ventanas negras de comandos mientras use el sistema
+- El sistema solo funciona mientras esas ventanas estén abiertas
+- Para detener el sistema, cierre las ventanas negras o presione 
+  Ctrl+C en cada una
+- La base de datos se guarda automáticamente, no se pierden datos
+  al cerrar el sistema
+
+=============================================================

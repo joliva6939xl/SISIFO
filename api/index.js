@@ -63,7 +63,6 @@ app.post('/api/otp/setup', async (req, res) => {
   const { usuario } = req.body;
   try {
     const result = await db.query('SELECT otp_secret FROM usuarios WHERE usuario = $1', [usuario]);
-    
     if (result.rows.length > 0 && result.rows[0].otp_secret) {
       const existingSecret = result.rows[0].otp_secret;
       const otpauth_url = `otpauth://totp/SISIFO:${usuario}?secret=${existingSecret}&issuer=SISIFO`;
@@ -131,6 +130,18 @@ app.put('/api/usuarios/:id/estado', async (req, res) => {
   }
 });
 
+// ✅ NUEVO: Endpoint para cambiar el cargo de un usuario
+app.put('/api/usuarios/:id/cargo', async (req, res) => {
+  const { id } = req.params;
+  const { cargo } = req.body;
+  try {
+    await db.query('UPDATE usuarios SET cargo = $1 WHERE id = $2', [cargo, id]);
+    res.json({ success: true });
+  } catch (err) { 
+    res.status(500).send('Error al actualizar cargo.'); 
+  }
+});
+
 app.delete('/api/usuarios/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM usuarios WHERE id = $1', [req.params.id]);
@@ -161,7 +172,6 @@ app.get('/api/reportes/:operador', async (req, res) => {
 app.post('/api/exportar', exportController.descargarReporte);
 app.get('/galeria/:id', exportController.galeria);
 
-
 app.post('/api/salas', async (req, res) => {
   const { nombre_sala, creado_por, tipo } = req.body;
   if (!nombre_sala || !creado_por) return res.status(400).send('Faltan datos de la sala.');
@@ -169,7 +179,6 @@ app.post('/api/salas', async (req, res) => {
   try {
     const salaExistente = await db.query("SELECT * FROM chats_salas WHERE nombre_sala = $1", [nombre_sala.toUpperCase()]);
     if (salaExistente.rows.length > 0) return res.json({ success: true, sala: salaExistente.rows[0] });
-
     const result = await db.query(
       "INSERT INTO chats_salas (nombre_sala, tipo, creado_por) VALUES ($1, $2, $3) RETURNING *",
       [nombre_sala.toUpperCase(), tipoSala, creado_por]
@@ -237,9 +246,6 @@ app.delete('/api/mensajes/:id', async (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }, maxHttpBufferSize: 1e8 });
 
-// ==========================================================
-// RUTA DE REPORTES
-// ==========================================================
 app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
   const { id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, operador, centro_trabajo, turno } = req.body;
   const rutas_archivos = req.files && req.files.length > 0 ? JSON.stringify(req.files.map(file => `/uploads/${file.filename}`)) : null;
@@ -250,7 +256,6 @@ app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
       [id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno]
     );
 
-    // ✅ Solo notificar cuando el reporte esté COMPLETO (etapa FINALIZADO)
     if (etapa && etapa.toUpperCase() === 'FINALIZADO') {
       io.emit('nuevo_reporte_analista', {
         id_incidencia: id_incidencia,
@@ -262,7 +267,6 @@ app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
         incidencia: incidencia
       });
     }
-
 
     if (etapa && etapa.toUpperCase() === 'FINALIZADO') {
       try {
@@ -288,9 +292,6 @@ app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
   }
 });
 
-// ==========================================================
-// GET CÁMARAS PARA AUTOCOMPLETADO
-// ==========================================================
 app.get('/api/camaras', async (req, res) => {
   try {
     const result = await db.query("SELECT codigo, nombre, macro_zona, sector FROM camaras ORDER BY codigo ASC");
@@ -301,26 +302,18 @@ app.get('/api/camaras', async (req, res) => {
   }
 });
 
-// ==========================================================
-// GET PERSONAL DE CAMPO PARA AUTOCOMPLETADO
-// ==========================================================
 app.get('/api/personal', async (req, res) => {
   try {
     const result = await db.query(
       "SELECT id, codigo, nombre, categoria, grupo, tipo_entrada FROM personal_campo WHERE estado = TRUE ORDER BY grupo ASC, codigo ASC, nombre ASC"
     );
-    
-    // Forzar encoding UTF-8 en la respuesta
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    
-    // Convertir los datos para asegurar que los acentos se envíen correctamente
     const datos = result.rows.map(row => ({
       ...row,
       nombre: row.nombre ? row.nombre.toString('utf8') : null,
       categoria: row.categoria ? row.categoria.toString('utf8') : null,
       grupo: row.grupo ? row.grupo.toString('utf8') : null
     }));
-    
     res.json(datos);
   } catch (err) {
     console.error("Error al cargar personal:", err);
@@ -330,9 +323,6 @@ app.get('/api/personal', async (req, res) => {
 
 require('./sockets')(io);
 
-// ==========================================================
-// CATCH-ALL: DEBE IR SIEMPRE AL FINAL
-// ==========================================================
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get(/.*/, (req, res) => {
@@ -340,6 +330,6 @@ app.get(/.*/, (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`[SISTEMA SISIFO] Servidor Centralizado corriendo en el puerto ${PORT}`);
 });

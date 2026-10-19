@@ -9,12 +9,14 @@ function App() {
   const [sesionActiva, setSesionActiva] = useState(() => localStorage.getItem('sisifo_user') !== null);
   const [usuarioGenerado, setUsuarioGenerado] = useState(() => localStorage.getItem('sisifo_user') || '');
   const [cargoUsuario, setCargoUsuario] = useState(() => localStorage.getItem('sisifo_cargo') || '');
+  
   const [vistaActual, setVistaActual] = useState(() => {
     const cargo = localStorage.getItem('sisifo_cargo');
     if (cargo === 'ADMINISTRADOR') return 'ADMINISTRADOR';
     if (cargo === 'ANALISTA') return 'ALMACEN';
     return 'FORMULARIO';
   });
+  
   const [datosSesion, setDatosSesion] = useState({ centro: 'BASE CENTRAL', turno: 'MAÑANA' });
 
   const handleLoginSuccess = (usuario, cargo, centro, turno) => {
@@ -36,7 +38,7 @@ function App() {
     if (window.confirm("¿Cerrar sesión?")) {
       localStorage.removeItem('sisifo_user');
       localStorage.removeItem('sisifo_cargo');
-      localStorage.removeItem('sisifo_roper'); // ✅ limpia el ROPER al salir
+      localStorage.removeItem('sisifo_roper');
       setSesionActiva(false);
       window.location.reload();
     }
@@ -46,14 +48,18 @@ function App() {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const esAdmin = cargoUsuario === 'ADMINISTRADOR';
+  const esAnalista = cargoUsuario === 'ANALISTA';
+  const esOperador = !esAdmin && !esAnalista;
+
   return (
     <div style={{ padding: '20px', maxWidth: '850px', margin: 'auto', fontFamily: 'Arial' }}>
       {/* HEADER GLOBAL */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#333', color: 'white', padding: '10px', borderRadius: '5px', marginBottom: '10px', fontSize: '14px' }}>
         <div>
           <span style={{ marginRight: '15px' }}>Usuario: <b>{usuarioGenerado}</b></span>
-          <span style={{ marginRight: '15px', color: cargoUsuario === 'ANALISTA' ? '#8df' : (cargoUsuario === 'ADMINISTRADOR' ? '#ff9900' : '#28a745'), fontSize: '12px', border: `1px solid ${cargoUsuario === 'ANALISTA' ? '#8df' : (cargoUsuario === 'ADMINISTRADOR' ? '#ff9900' : '#28a745')}`, padding: '2px 5px', borderRadius: '3px' }}>{cargoUsuario}</span>
-          {cargoUsuario !== 'ADMINISTRADOR' && (
+          <span style={{ marginRight: '15px', color: esAnalista ? '#8df' : (esAdmin ? '#ff9900' : '#28a745'), fontSize: '12px', border: `1px solid ${esAnalista ? '#8df' : (esAdmin ? '#ff9900' : '#28a745')}`, padding: '2px 5px', borderRadius: '3px' }}>{cargoUsuario}</span>
+          {!esAdmin && (
             <>
               <span style={{ marginRight: '15px' }}>Base: <b>{datosSesion.centro}</b></span>
               <span style={{ color: '#ffc107' }}>Turno: <b>{datosSesion.turno}</b></span>
@@ -65,26 +71,34 @@ function App() {
 
       <h2 style={{ textAlign: 'center', marginBottom: '15px' }}>SISTEMA SISIFO - MONITOREO</h2>
 
+      {/* NAVEGACIÓN DE VISTAS */}
+      <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', justifyContent: 'center' }}>
+        {esAdmin && (
+          <button onClick={() => setVistaActual('ADMINISTRADOR')} style={{ padding: '10px 15px', cursor: 'pointer', background: vistaActual === 'ADMINISTRADOR' ? '#0056b3' : '#eee', color: vistaActual === 'ADMINISTRADOR' ? 'white' : '#333', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>
+            Panel de Control
+          </button>
+        )}
+        
+        {esOperador && (
+          <button onClick={() => setVistaActual('FORMULARIO')} style={{ padding: '10px 15px', cursor: 'pointer', background: vistaActual === 'FORMULARIO' ? '#0056b3' : '#eee', color: vistaActual === 'FORMULARIO' ? 'white' : '#333', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>
+            Nuevo Reporte
+          </button>
+        )}
+        
+        <button onClick={() => setVistaActual('ALMACEN')} style={{ padding: '10px 15px', cursor: 'pointer', background: vistaActual === 'ALMACEN' ? '#0056b3' : '#eee', color: vistaActual === 'ALMACEN' ? 'white' : '#333', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>
+          {esAdmin || esAnalista ? 'Almacén Global' : 'Mi Almacén'}
+        </button>
+      </div>
+
       {/* ENRUTAMIENTO DE VISTAS */}
       {vistaActual === 'ADMINISTRADOR' && <PanelAdministrador usuarioLogueado={usuarioGenerado} />}
 
-      {vistaActual !== 'ADMINISTRADOR' && (
-        <>
-          <div style={{ display: 'flex', gap: '5px', marginBottom: '20px', justifyContent: 'center' }}>
-            {cargoUsuario !== 'ANALISTA' && (
-              <button onClick={() => setVistaActual('FORMULARIO')} style={{ padding: '10px 15px', cursor: 'pointer', background: vistaActual === 'FORMULARIO' ? '#0056b3' : '#eee', color: vistaActual === 'FORMULARIO' ? 'white' : '#333', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>Nuevo Reporte</button>
-            )}
-            <button onClick={() => setVistaActual('ALMACEN')} style={{ padding: '10px 15px', cursor: 'pointer', background: vistaActual === 'ALMACEN' ? '#0056b3' : '#eee', color: vistaActual === 'ALMACEN' ? 'white' : '#333', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>
-              {cargoUsuario === 'ANALISTA' ? 'Panel de Analista Global' : 'Mi Almacén (Historial)'}
-            </button>
-          </div>
+      {vistaActual === 'FORMULARIO' && esOperador && (
+        <FormularioReporte usuarioGenerado={usuarioGenerado} centro={datosSesion.centro} turno={datosSesion.turno} />
+      )}
 
-          {vistaActual === 'FORMULARIO' ? (
-            <FormularioReporte usuarioGenerado={usuarioGenerado} centro={datosSesion.centro} turno={datosSesion.turno} />
-          ) : (
-            <Almacen usuarioLogueado={usuarioGenerado} cargo={cargoUsuario} />
-          )}
-        </>
+      {vistaActual === 'ALMACEN' && (
+        <Almacen usuarioLogueado={usuarioGenerado} cargo={cargoUsuario} />
       )}
     </div>
   );
