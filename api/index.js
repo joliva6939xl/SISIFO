@@ -9,13 +9,59 @@ const http = require('http');
 const { Server } = require('socket.io');
 const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
+const logger = require('./utils/logger');
+
 
 const app = express();
 
-app.use(cors());
+// ==========================================
+// SEGURIDAD: Helmet
+// ==========================================
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
+// ==========================================
+// SEGURIDAD: CORS
+// ==========================================
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://172.16.160.33:5173'],
+  credentials: true
+}));
+
 app.use(express.json({ limit: '1500mb' }));
+
+// ==========================================
+// LOGGING: Registrar todas las peticiones HTTP
+// ==========================================
+app.use(morgan('combined', { 
+  stream: { 
+    write: message => logger.info(message.trim()) 
+  } 
+}));
 app.use(express.urlencoded({ limit: '1500mb', extended: true }));
 
+// ==========================================
+// SEGURIDAD: Rate Limiting en login
+// ==========================================
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { 
+    error: 'Demasiados intentos de login. Inténtalo de nuevo en 15 minutos.' 
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api/login', loginLimiter);
+
+// ==========================================
+// VERIFICACIÓN DE LICENCIA
+// ==========================================
 const verificarLicencia = async () => { return true; };
 
 app.use(async (req, res, next) => {
@@ -63,6 +109,7 @@ app.post('/api/otp/setup', async (req, res) => {
   const { usuario } = req.body;
   try {
     const result = await db.query('SELECT otp_secret FROM usuarios WHERE usuario = $1', [usuario]);
+    
     if (result.rows.length > 0 && result.rows[0].otp_secret) {
       const existingSecret = result.rows[0].otp_secret;
       const otpauth_url = `otpauth://totp/SISIFO:${usuario}?secret=${existingSecret}&issuer=SISIFO`;
@@ -130,7 +177,7 @@ app.put('/api/usuarios/:id/estado', async (req, res) => {
   }
 });
 
-// ✅ NUEVO: Endpoint para cambiar el cargo de un usuario
+// Endpoint para cambiar el cargo de un usuario
 app.put('/api/usuarios/:id/cargo', async (req, res) => {
   const { id } = req.params;
   const { cargo } = req.body;
@@ -179,6 +226,7 @@ app.post('/api/salas', async (req, res) => {
   try {
     const salaExistente = await db.query("SELECT * FROM chats_salas WHERE nombre_sala = $1", [nombre_sala.toUpperCase()]);
     if (salaExistente.rows.length > 0) return res.json({ success: true, sala: salaExistente.rows[0] });
+
     const result = await db.query(
       "INSERT INTO chats_salas (nombre_sala, tipo, creado_por) VALUES ($1, $2, $3) RETURNING *",
       [nombre_sala.toUpperCase(), tipoSala, creado_por]
@@ -246,6 +294,9 @@ app.delete('/api/mensajes/:id', async (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }, maxHttpBufferSize: 1e8 });
 
+// ==========================================================
+// RUTA DE REPORTES
+// ==========================================================
 app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
   const { id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, operador, centro_trabajo, turno } = req.body;
   const rutas_archivos = req.files && req.files.length > 0 ? JSON.stringify(req.files.map(file => `/uploads/${file.filename}`)) : null;
@@ -292,6 +343,9 @@ app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
   }
 });
 
+// ==========================================================
+// GET CÁMARAS PARA AUTOCOMPLETADO
+// ==========================================================
 app.get('/api/camaras', async (req, res) => {
   try {
     const result = await db.query("SELECT codigo, nombre, macro_zona, sector FROM camaras ORDER BY codigo ASC");
@@ -302,18 +356,24 @@ app.get('/api/camaras', async (req, res) => {
   }
 });
 
+// ==========================================================
+// GET PERSONAL DE CAMPO PARA AUTOCOMPLETADO
+// ==========================================================
 app.get('/api/personal', async (req, res) => {
   try {
     const result = await db.query(
       "SELECT id, codigo, nombre, categoria, grupo, tipo_entrada FROM personal_campo WHERE estado = TRUE ORDER BY grupo ASC, codigo ASC, nombre ASC"
     );
+    
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    
     const datos = result.rows.map(row => ({
       ...row,
       nombre: row.nombre ? row.nombre.toString('utf8') : null,
       categoria: row.categoria ? row.categoria.toString('utf8') : null,
       grupo: row.grupo ? row.grupo.toString('utf8') : null
     }));
+    
     res.json(datos);
   } catch (err) {
     console.error("Error al cargar personal:", err);
@@ -323,13 +383,52 @@ app.get('/api/personal', async (req, res) => {
 
 require('./sockets')(io);
 
+// ==========================================================
+// MANEJO DE ERRORES (Middleware global)
+// ==========================================================
+
+// Handler para rutas no encontradas (404)
+app.use((req, res, next) => {
+  res.status(404).json({
+    error: 'Ruta no encontrada',
+    message: `La ruta ${req.method} ${req.originalUrl} no existe en el servidor`
+  });
+});
+
+// Middleware global de errores (SIEMPRE va al final)
+app.use((err, req, res, next) => {
+  logger.error('Error capturado en el servidor', {
+    message: err.message,
+    stack: err.stack,
+    path: req.path,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
+
+  res.status(err.status || 500).json({
+    error: 'Error interno del servidor',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Ocurrió un error inesperado'
+  });
+});
+
+// ==========================================================
+// CATCH-ALL: DEBE IR SIEMPRE AL FINAL (después de los errores)
+// ==========================================================
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[SISTEMA SISIFO] Servidor Centralizado corriendo en el puerto ${PORT}`);
-});
+// ==========================================================
+// INICIO DEL SERVIDOR (Solo si se ejecuta directamente, NO en tests)
+// ==========================================================
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[SISTEMA SISIFO] SERVIDOR CORRIENDO  ${PORT}`);
+  });
+}
+
+// Exportamos la app para que Jest (supertest) pueda probarla
+module.exports = app;

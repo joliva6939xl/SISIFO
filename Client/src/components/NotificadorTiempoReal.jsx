@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+// ✅ FIX 4: importamos getSocketUrl
+import { getSocketUrl } from '../api/api';
 import {  Bell } from 'lucide-react';
 
 export default function NotificadorTiempoReal() {
@@ -11,10 +13,8 @@ export default function NotificadorTiempoReal() {
   useEffect(() => {
     if (!esAnalista) return;
 
-    const urlBase = window.location.origin.includes('localhost')
-      ? 'http://localhost:3000'
-      : window.location.origin;
-    const socket = io(urlBase);
+    // ✅ FIX 4: el socket ahora conecta al backend (3000) con la IP real, no al 5173
+    const socket = io(getSocketUrl());
 
     const quitar = (id) => setToasts(prev => prev.filter(t => t.id !== id));
 

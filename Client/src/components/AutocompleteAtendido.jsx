@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 
+// ✅ AGREGAR: URL del backend (igual que en LoginScreen y AutocompleteCamara)
+const API_URL = window.location.origin.includes('localhost') 
+  ? 'http://localhost:3000/api' 
+  : `http://${window.location.hostname}:3000/api`;
+
 const computeValor = (c) => {
   if (c.modo === 'LISTO') return c.valorFinal || '';
   if (c.modo === 'DETALLE') {
@@ -46,24 +51,29 @@ export default function AutocompleteAtendido({ onChange }) {
   const subOpcionRef = useRef(null);    // popup paramédicos
 
   useEffect(() => {
-    axios.get('/api/personal')
+    // ✅ CAMBIAR: Usar API_URL completa en vez de '/api/personal'
+    axios.get(`${API_URL}/personal`)
       .then((res) => setPersonal(Array.isArray(res.data) ? res.data : []))
       .catch((err) => { console.error('Error cargando personal:', err); setPersonal([]); });
   }, []);
 
   // ✅ SCROLL automático para popup principal
+  // Extraemos la dependencia a una variable para satisfacer a ESLint
+  const indicesActivos = campos.map(c => c.indiceActivo).join(',');
   useEffect(() => {
     if (opcionRef.current) {
       opcionRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
-  }, [campos.map(c => c.indiceActivo).join(',')]);
+  }, [indicesActivos]);
 
   // ✅ SCROLL automático para popup de paramédicos
+  // Extraemos la dependencia a una variable para satisfacer a ESLint
+  const subIndicesActivos = campos.map(c => c.subIndice).join(',');
   useEffect(() => {
     if (subOpcionRef.current) {
       subOpcionRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
-  }, [campos.map(c => c.subIndice).join(',')]);
+  }, [subIndicesActivos]);
 
   const aplicar = (nuevos) => { setCampos(nuevos); onChange(serialize(nuevos)); };
 

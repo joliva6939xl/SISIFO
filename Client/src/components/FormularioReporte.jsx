@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Camera, Send, ClipboardPaste, ArrowRight, ArrowLeft, Edit, X as CloseIcon } from 'lucide-react';
 import { io } from 'socket.io-client';
-import { enviarReporte } from '../api/api';
+// ✅ CAMBIO 1: Importamos getSocketUrl desde api.js
+import { enviarReporte, getSocketUrl } from '../api/api'; 
 import { tipificaciones } from '../data/tipificaciones';
 import AutocompleteCamara from './AutocompleteCamara';
 import AutocompleteAtendido from './AutocompleteAtendido';
@@ -135,10 +136,22 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
       if (form.asunto_desarrollo) await enviarPaquete('DESARROLLO', form.asunto_desarrollo, '', archivos.desarrollo);
       if (form.asunto_finalizado) await enviarPaquete('FINALIZADO', form.asunto_finalizado, form.atendido, archivos.finalizado);
 
-      const urlBase = window.location.origin.includes('localhost') ? 'http://localhost:3000' : window.location.origin;
-      const socketBot = io(urlBase);
-      socketBot.emit('enviar_mensaje', { remitente: 'SISTEMA', contenido: `Incidencia #${idGenerado} consolidada.`, es_sistema: true });
-      setTimeout(() => socketBot.disconnect(), 1000);
+      // ✅ CAMBIO 2: Lógica de Socket corregida para Red Local
+      // Usamos getSocketUrl() para apuntar al puerto 3000 con la IP correcta.
+      // Esperamos al evento 'connect' para emitir, evitando que se desconecte antes de enviar.
+      const socketBot = io(getSocketUrl());
+      
+      socketBot.on('connect', () => {
+        console.log('[SISIFO] Bot conectado, enviando mensaje...');
+        socketBot.emit('enviar_mensaje', { 
+          remitente: 'SISTEMA', 
+          contenido: `Incidencia #${idGenerado} consolidada.`, 
+          es_sistema: true 
+        });
+        
+        // Desconectamos después de un breve margen para asegurar entrega
+        setTimeout(() => socketBot.disconnect(), 500);
+      });
 
       alert(`Reporte enviado: #${idGenerado}`);
       setEtapa('INICIO');

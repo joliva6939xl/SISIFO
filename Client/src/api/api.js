@@ -1,6 +1,60 @@
 import axios from 'axios';
 
-const API_URL = window.location.origin.includes('localhost') ? 'http://localhost:3000/api' : window.location.origin + '/api';
+const API_URL = window.location.origin.includes('localhost') 
+  ? 'http://localhost:3000/api' 
+  : `http://${window.location.hostname}:3000/api`;
+
+// ==========================================
+// INTERCEPTOR DE RESPUESTAS (Manejo global de errores)
+// ==========================================
+axios.interceptors.response.use(
+  response => response,
+  error => {
+    const errorMessage = error.response?.data?.error || error.message;
+    const statusCode = error.response?.status;
+
+    console.error('❌ Error API:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: statusCode,
+      message: errorMessage
+    });
+
+    // Manejar errores específicos
+    if (statusCode === 401) {
+      // Sesión expirada o no autorizado
+      localStorage.removeItem('sisifo_user');
+      localStorage.removeItem('sisifo_cargo');
+      window.location.href = '/';
+      alert('Sesión expirada. Por favor inicie sesión nuevamente.');
+    } else if (statusCode === 403) {
+      alert('Acceso denegado. No tiene permisos para esta acción.');
+    } else if (statusCode === 429) {
+      alert('Demasiadas peticiones. Intente nuevamente en unos minutos.');
+    } else if (statusCode >= 500) {
+      alert('Error del servidor. Intente nuevamente más tarde.');
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+// ==========================================
+// INTERCEPTOR DE PETICIONES (Preparado para tokens)
+// ==========================================
+axios.interceptors.request.use(
+  config => {
+    // Aquí puedes agregar tokens de autenticación en el futuro
+    return config;
+  },
+  error => {
+    return Promise.reject(error);
+  }
+);
+
+// ==========================================
+// ENDPOINTS
+// ==========================================
 
 export const enviarReporte = async (formData) => {
   return await axios.post(`${API_URL}/reportes`, formData, {
@@ -52,7 +106,6 @@ export const actualizarEstadoUsuario = (id, data) => {
   return axios.put(`${API_URL}/usuarios/${id}/estado`, data);
 };
 
-// ✅ NUEVO: Función para cambiar el cargo
 export const actualizarCargoUsuario = (id, data) => {
   return axios.put(`${API_URL}/usuarios/${id}/cargo`, data);
 };
@@ -68,4 +121,16 @@ export const configurarOTP = async (datos) => {
       secret: 'MOCK_SECRET'
     };
   }
+};
+// ==========================================
+// HELPERS DE RED: resuelven imágenes y socket contra el BACKEND (puerto 3000)
+// Usan la IP real desde la que se accede, no localhost.
+// ==========================================
+export const getSocketUrl = () =>
+  `http://${window.location.hostname || 'localhost'}:3000`;
+
+export const getMediaUrl = (ruta) => {
+  if (!ruta) return '';
+  if (typeof ruta === 'string' && ruta.startsWith('http')) return ruta; // ya es absoluta
+  return `http://${window.location.hostname || 'localhost'}:3000${ruta}`;
 };

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { obtenerReportesPorOperador, obtenerReportesGlobales, obtenerUsuariosLista } from '../api/api';
+// ✅ FIX 3: importamos getMediaUrl y getSocketUrl
+import { obtenerReportesPorOperador, obtenerReportesGlobales, obtenerUsuariosLista, getMediaUrl, getSocketUrl } from '../api/api';
 import { Eye, FileText, ArrowLeft, Image as ImageIcon, BarChart2, Search, Filter, ChevronLeft, ChevronRight, MapPin, Calendar, User, Users, Activity, Download, Shield } from 'lucide-react';
 import NotificadorTiempoReal from './NotificadorTiempoReal';
 import FeedEnVivo from './FeedEnVivo';
@@ -68,8 +69,8 @@ function Almacen({ usuarioLogueado, cargo }) {
     }
     const idsFiltrados = datos.map(exp => parseInt(exp.id));
     try {
-      const urlBase = window.location.origin.includes('localhost') ? 'http://localhost:3000' : window.location.origin;
-      const response = await fetch(`${urlBase}/api/exportar`, {
+      // ✅ FIX 3: el export ahora apunta al backend (3000) con la IP real, no a localhost
+      const response = await fetch(`${getSocketUrl()}/api/exportar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: idsFiltrados, generadoPor: usuarioLogueado, operadorFiltro: filtroOperador })
@@ -245,9 +246,10 @@ function Almacen({ usuarioLogueado, cargo }) {
                     <ImageIcon size={14} className="informe-evidencias-icono"/> Evidencia ({fotos.length}):
                   </b>
                   <div className="informe-evidencias-grid">
+                    {/* ✅ FIX 3: getMediaUrl(url) arma la URL correcta según quién mire (servidor, compañero o analista WiFi) */}
                     {fotos.map((url, i) => (
-                      <a key={i} href={`http://localhost:3000${url}`} target="_blank" rel="noreferrer">
-                        <img src={`http://localhost:3000${url}`} alt="Evidencia" />
+                      <a key={i} href={getMediaUrl(url)} target="_blank" rel="noreferrer">
+                        <img src={getMediaUrl(url)} alt="Evidencia" />
                       </a>
                     ))}
                   </div>

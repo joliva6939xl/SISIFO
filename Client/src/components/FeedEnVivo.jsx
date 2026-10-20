@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { obtenerReportesGlobales } from '../api/api';
+// ✅ FIX 4: importamos getSocketUrl
+import { obtenerReportesGlobales, getSocketUrl } from '../api/api';
 import { Activity, Clock, MapPin, User, Hash, Eye } from 'lucide-react';
 
 export default function FeedEnVivo({ onVerReporte }) {
@@ -39,11 +40,8 @@ export default function FeedEnVivo({ onVerReporte }) {
 
     cargarHistorial();
 
-    // ✅ Conectar socket para nuevos reportes
-    const urlBase = window.location.origin.includes('localhost')
-      ? 'http://localhost:3000'
-      : window.location.origin;
-    const socket = io(urlBase);
+    // ✅ FIX 4: el socket ahora conecta al backend (3000) con la IP real, no al 5173
+    const socket = io(getSocketUrl());
 
     socket.on('nuevo_reporte_analista', (datos) => {
       const nueva = {

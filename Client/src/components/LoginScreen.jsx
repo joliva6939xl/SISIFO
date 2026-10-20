@@ -3,6 +3,11 @@ import axios from 'axios';
 import { User, Shield, MapPin, LogIn, Clock } from 'lucide-react';
 import { registrarUsuario } from '../api/api';
 
+// ✅ AGREGAR ESTA LÍNEA
+const API_URL = window.location.origin.includes('localhost') 
+  ? 'http://localhost:3000/api' 
+  : `http://${window.location.hostname}:3000/api`;
+
 export default function LoginScreen({ onLoginSuccess }) {
   const [modoRegistro, setModoRegistro] = useState(false);
   const [token, setToken] = useState('');
@@ -14,7 +19,8 @@ export default function LoginScreen({ onLoginSuccess }) {
       if (datosUsuario.nombre && datosUsuario.apellido) {
         const userEsperado = datosUsuario.nombre.charAt(0).toLowerCase() + datosUsuario.apellido.toLowerCase().replace(/\s/g, '');
         try {
-          const qrRes = await axios.post('/api/otp/setup', { usuario: userEsperado });
+          // ✅ CAMBIAR: usar API_URL completo
+          const qrRes = await axios.post(`${API_URL}/otp/setup`, { usuario: userEsperado });
           setQrCode(qrRes.data.qr);
         } catch (err) { console.error("Error QR:", err); }
       } else { setQrCode(null); }
@@ -27,7 +33,8 @@ export default function LoginScreen({ onLoginSuccess }) {
     if (!datosUsuario.nombre || !datosUsuario.apellido || !token) return alert("Complete los datos y el código OTP.");
     const userEsperado = datosUsuario.nombre.charAt(0).toLowerCase() + datosUsuario.apellido.toLowerCase().replace(/\s/g, '');
     try {
-      const respuesta = await axios.post('/api/login', { usuario: userEsperado, token });
+      // ✅ CAMBIAR: usar API_URL completo
+      const respuesta = await axios.post(`${API_URL}/login`, { usuario: userEsperado, token });
       if (respuesta.data.success) {
         onLoginSuccess(respuesta.data.usuario, respuesta.data.cargo, datosUsuario.centro, datosUsuario.turno);
       }
