@@ -35,7 +35,7 @@ const extDe = (ruta) => {
 };
 
 // ============================================================
-// PÁGINA DE GALERÍA LOCAL (tu idea: ver/descargar por etapa)
+// PÁGINA DE GALERÍA LOCAL (ver/descargar por etapa)
 // ============================================================
 exports.galeria = async (req, res) => {
   try {
@@ -53,7 +53,6 @@ exports.galeria = async (req, res) => {
       return res.status(404).send('<h2 style="font-family:Arial">Caso no encontrado.</h2>');
     }
 
-    // Agrupar fotos por etapa preservando el orden
     const etapas = ['INICIO', 'DESARROLLO', 'FINALIZADO'];
     const porEtapa = { INICIO: [], DESARROLLO: [], FINALIZADO: [] };
     let meta = null;
@@ -153,7 +152,7 @@ exports.galeria = async (req, res) => {
 };
 
 // ============================================================
-// EXCEL (un hyperlink SIMPLE por fila -> abre la galería)
+// EXCEL (con CATEGORÍA e INCIDENCIA agregadas)
 // ============================================================
 exports.descargarReporte = async (req, res) => {
   const { ids, generadoPor } = req.body;
@@ -164,9 +163,12 @@ exports.descargarReporte = async (req, res) => {
     }
 
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+    
+    // ✅ NUEVO: Agregamos categoria e incidencia al SELECT
     const query = `
       SELECT id_incidencia, etapa, camara, zona, roper, asunto, atendido, foto_video,
-             operador, centro_trabajo, turno, TO_CHAR(creado_el, 'DD/MM/YYYY HH24:MI') as fecha
+             operador, centro_trabajo, turno, TO_CHAR(creado_el, 'DD/MM/YYYY HH24:MI') as fecha,
+             categoria, incidencia
       FROM reportes_monitoreo
       WHERE id_incidencia IN (${placeholders})
       ORDER BY id_incidencia DESC, id ASC
@@ -174,11 +176,12 @@ exports.descargarReporte = async (req, res) => {
     const result = await db.query(query, ids);
     if (result.rows.length === 0) return res.status(404).send('No hay registros.');
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`; // http://localhost:3000
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Reporte de Incidencias');
 
+    // ✅ NUEVO: Columnas actualizadas con CATEGORÍA e INCIDENCIA
     sheet.columns = [
       { header: 'ID / CASO', key: 'id_incidencia', width: 12 },
       { header: 'FECHA Y HORA', key: 'fecha', width: 18 },
@@ -187,6 +190,8 @@ exports.descargarReporte = async (req, res) => {
       { header: 'OPERADOR', key: 'operador', width: 15 },
       { header: 'CÁMARA', key: 'camara', width: 20 },
       { header: 'ZONA / UBICACIÓN', key: 'zona', width: 25 },
+      { header: 'CATEGORÍA', key: 'categoria', width: 25 },       // <-- NUEVA
+      { header: 'INCIDENCIA', key: 'incidencia', width: 40 },     // <-- NUEVA
       { header: 'GRUPO / ROPER', key: 'roper', width: 20 },
       { header: 'ETAPA', key: 'etapa', width: 16 },
       { header: 'DESCRIPCIÓN / ASUNTO', key: 'asunto', width: 50 },
@@ -203,8 +208,10 @@ exports.descargarReporte = async (req, res) => {
 
     let currentId = null;
     let startRow = 0;
-    // 'M' NO se fusiona: cada etapa conserva su propio botón/link
-    const columnsToMerge = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'K', 'L', 'M'];
+    
+    // ✅ NUEVO: 'K' (ETAPA) y 'L' (ASUNTO) NO se fusionan porque cambian por fila.
+    // Las nuevas columnas 'H' (CATEGORÍA) e 'I' (INCIDENCIA) SÍ se fusionan.
+    const columnsToMerge = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'M', 'N', 'O'];
 
     result.rows.forEach((row, index) => {
       const rowIndex = index + 2;
@@ -218,6 +225,8 @@ exports.descargarReporte = async (req, res) => {
         operador: checkData(row.operador),
         camara: row.camara,
         zona: row.zona,
+        categoria: checkData(row.categoria),       // <-- NUEVO
+        incidencia: checkData(row.incidencia),     // <-- NUEVO
         roper: checkData(row.roper),
         etapa: row.etapa,
         asunto: row.asunto,
@@ -229,33 +238,31 @@ exports.descargarReporte = async (req, res) => {
         cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
         cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
       });
-      newRow.getCell('J').alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-
-            // ✅ UN SOLO botón por caso (en la fila INICIO), las otras filas quedan vacías
-      const celdaM = newRow.getCell('M');
       
-      // Solo poner el botón en la primera fila del caso (etapa INICIO)
+      // ✅ AJUSTE: 'L' es ahora la columna de ASUNTO (antes era 'J')
+      newRow.getCell('L').alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+
+      // ✅ AJUSTE: 'O' es ahora la columna de EVIDENCIA (antes era 'M')
+      const celdaO = newRow.getCell('O');
+      
       if (etapaTxt === 'INICIO') {
-        const rutas = parsearRutas(row.foto_video);
-        // Verificar si hay fotos en CUALQUIER etapa del caso
         const tieneFotos = result.rows.some(r => 
           r.id_incidencia === row.id_incidencia && parsearRutas(r.foto_video).length > 0
         );
         
         if (tieneFotos) {
-          celdaM.value = {
+          celdaO.value = {
             text: '📷 VER FOTOS',
             hyperlink: `${baseUrl}/galeria/${row.id_incidencia}`
           };
-          celdaM.font = { color: { argb: 'FF0563C1' }, underline: {}, bold: true };
+          celdaO.font = { color: { argb: 'FF0563C1' }, underline: {}, bold: true };
         } else {
-          celdaM.value = 'SIN DATOS';
+          celdaO.value = 'SIN DATOS';
         }
       } else {
-        // Las filas de DESARROLLO y FINALIZADO quedan vacías (o con guión)
-        celdaM.value = '—';
+        celdaO.value = '—';
       }
-      celdaM.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      celdaO.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
 
       if (row.id_incidencia !== currentId) {
         if (currentId !== null && rowIndex - 1 > startRow) {
@@ -264,8 +271,9 @@ exports.descargarReporte = async (req, res) => {
         currentId = row.id_incidencia;
         startRow = rowIndex;
       } else {
+        // ✅ AJUSTE: 'M' es ahora la columna de ATENDIDO POR (antes era 'K')
         const at = checkData(row.atendido);
-        if (at !== 'SIN DATOS') sheet.getCell(`K${startRow}`).value = at;
+        if (at !== 'SIN DATOS') sheet.getCell(`M${startRow}`).value = at;
       }
     });
 

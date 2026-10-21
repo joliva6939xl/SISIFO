@@ -1,0 +1,467 @@
+/* ==========================================
+   FORMULARIO DE REPORTE - ESTILOS
+   ========================================== */
+
+.formulario-container {
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 28px;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  max-width: 650px;
+  margin: auto;
+}
+
+/* Indicador de etapas */
+.formulario-etapas {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-bottom: 25px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #666;
+}
+
+.formulario-etapas .etapa-activa {
+  color: #0056b3;
+}
+
+.formulario-etapas .etapa-separador {
+  color: #666;
+}
+
+/* Header de etapa */
+.formulario-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+}
+
+.formulario-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #222;
+}
+
+.btn-editar {
+  background: #ff9800;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+
+.btn-editar:hover {
+  background: #e68900;
+}
+
+.btn-editar.editando {
+  background: #6c757d;
+}
+
+.btn-editar.editando:hover {
+  background: #5a6268;
+}
+
+/* Campos del formulario */
+.formulario-campos {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.formulario-label {
+  font-size: 13px;
+  font-weight: bold;
+  color: #333;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.formulario-label .label-hint {
+  font-size: 11px;
+  color: #888;
+  font-weight: normal;
+}
+
+.formulario-input {
+  padding: 12px 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+
+.formulario-input:focus {
+  outline: none;
+  border-color: #0056b3;
+}
+
+.formulario-input:read-only {
+  background: #f8f9fa;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.formulario-input:read-only.con-valor {
+  background: #e9ecef;
+  color: #495057;
+  font-style: normal;
+  font-weight: bold;
+}
+
+.formulario-input.roper {
+  background: #f8f9fa;
+}
+
+.formulario-input.roper.con-valor {
+  background: #f1f8f3;
+  border-color: #28a745;
+  color: #333;
+  font-weight: bold;
+}
+
+.formulario-input.incidencia {
+  border: 2px solid #0056b3;
+  text-transform: uppercase;
+}
+
+/* Campo de especificar incidencia */
+.incidencia-especificar {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.incidencia-especificar .etiqueta {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: #e9ecef;
+  border: 1px solid #adb5bd;
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #495057;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.incidencia-especificar .input-detalle {
+  flex: 1;
+  padding: 12px;
+  border: 2px solid #ff9800;
+  border-radius: 0 6px 6px 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  background: #fff8ee;
+  font-family: inherit;
+}
+
+.incidencia-especificar .btn-cancelar {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  width: 38px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 16px;
+  transition: background 0.2s;
+}
+
+.incidencia-especificar .btn-cancelar:hover {
+  background: #c82333;
+}
+
+/* Sugerencias de incidencia */
+.sugerencias-container {
+  position: relative;
+}
+
+.sugerencias-lista {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  margin-top: 5px;
+}
+
+.sugerencia-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+  background: white;
+  color: #333;
+  transition: background 0.15s, color 0.15s;
+  font-weight: normal;
+}
+
+.sugerencia-item:hover,
+.sugerencia-item.activa {
+  background: #0056b3;
+  color: white;
+  font-weight: bold;
+}
+
+.sugerencia-item.activa .sugerencia-numero {
+  color: #ffd54f;
+}
+
+.sugerencia-item.global {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.sugerencia-item.global .sugerencia-numero {
+  color: #ff9800;
+}
+
+.sugerencia-item.seleccionada {
+  background: #e3f2fd;
+}
+
+.sugerencia-numero {
+  color: #0056b3;
+}
+
+.sugerencia-categoria {
+  float: right;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.sugerencias-vacio {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 15px;
+  z-index: 1000;
+  margin-top: 5px;
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+}
+
+/* Textareas por etapa */
+.formulario-textareas {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.formulario-textarea {
+  padding: 12px 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+  height: 110px;
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.formulario-textarea:focus {
+  outline: none;
+  border-color: #0056b3;
+}
+
+/* Zona de carga de imágenes */
+.formulario-imagenes {
+  cursor: pointer;
+  background: #eaf4ff;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+  border: 2px dashed #0056b3;
+  margin-top: 10px;
+  transition: background 0.2s;
+}
+
+.formulario-imagenes:hover {
+  background: #d6eaff;
+}
+
+.formulario-imagenes .iconos {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #0056b3;
+}
+
+.formulario-imagenes .texto-principal {
+  font-size: 15px;
+  color: #333;
+  font-weight: bold;
+}
+
+.formulario-imagenes .texto-secundario {
+  font-size: 12px;
+  color: #666;
+}
+
+/* Vista previa de imágenes */
+.formulario-vistas-previas {
+  margin-top: 12px;
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+.formulario-vistas-previas-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  justify-content: center;
+}
+
+.vista-previa-item {
+  position: relative;
+  display: inline-block;
+}
+
+.vista-previa-item img {
+  height: 90px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid #ccc;
+}
+
+.vista-previa-item .btn-eliminar {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  transition: background 0.2s;
+}
+
+.vista-previa-item .btn-eliminar:hover {
+  background: #c82333;
+}
+
+/* Enter armado */
+.formulario-enter-armado {
+  text-align: center;
+  margin-top: 15px;
+  padding: 10px;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #856404;
+}
+
+/* Botones de navegación */
+.formulario-navegacion {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 25px;
+  padding-top: 18px;
+  border-top: 2px solid #eee;
+}
+
+.btn-navegacion {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-navegacion:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.btn-atras {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-atras:hover:not(:disabled) {
+  background: #5a6268;
+}
+
+.btn-continuar {
+  background: #0056b3;
+  color: white;
+  padding: 12px 24px;
+}
+
+.btn-continuar:hover {
+  background: #004494;
+}
+
+.btn-continuar.armado {
+  background: #ff9800;
+  border: 3px solid #ff5722;
+  box-shadow: 0 0 15px rgba(255,152,0,0.6);
+  transform: scale(1.05);
+}
+
+.btn-enviar {
+  background: green;
+  color: white;
+  padding: 12px 24px;
+}
+
+.btn-enviar:hover {
+  background: #006400;
+}
+
+.btn-enviar.armado {
+  background: #ff9800;
+  border: 3px solid #ff5722;
+  box-shadow: 0 0 15px rgba(255,152,0,0.6);
+  transform: scale(1.05);
+}

@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { Camera, Send, ClipboardPaste, ArrowRight, ArrowLeft, Edit, X as CloseIcon } from 'lucide-react';
 import { io } from 'socket.io-client';
-// ✅ CAMBIO 1: Importamos getSocketUrl desde api.js
-import { enviarReporte, getSocketUrl } from '../api/api'; 
+import { enviarReporte, getSocketUrl } from '../api/api';
 import { tipificaciones } from '../data/tipificaciones';
 import AutocompleteCamara from './AutocompleteCamara';
 import AutocompleteAtendido from './AutocompleteAtendido';
+import './FormularioReporte.css';
 
 const requiereEspecificar = (incidencia) =>
   typeof incidencia === 'string' && incidencia.toUpperCase().includes('(ESPECIFICAR)');
@@ -21,8 +21,8 @@ const buscarTipif = (q) => {
 export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
   const [etapa, setEtapa] = useState('INICIO');
   const [edicionCampos, setEdicionCampos] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
 
-  // ✅ ROPER persistente: se precarga del localStorage (lo que escribiste en el turno)
   const roperInicial = localStorage.getItem('sisifo_roper') || '';
 
   const [form, setForm] = useState({
@@ -53,6 +53,25 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     setEnterArmado(true);
   };
 
+  // ✅ NUEVO: Función para limpiar incidencia rápidamente
+  const limpiarIncidencia = () => {
+    setBusquedaIncidencia('');
+    setForm(prev => ({ 
+      ...prev, 
+      incidencia: '', 
+      categoria: '', 
+      incidencia_otro: '' 
+    }));
+    setMostrarSugerencias(false);
+    setIndiceSeleccionado(-1);
+    // Enfocar el input después de limpiar
+    setTimeout(() => {
+      if (inputBusquedaRef.current) {
+        inputBusquedaRef.current.focus();
+      }
+    }, 0);
+  };
+
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
     const currEtapa = etapa.toLowerCase();
@@ -74,7 +93,6 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     setVistasPrevias(prev => ({ ...prev, [currEtapa]: prev[currEtapa].filter((_, i) => i !== index) }));
   };
 
-  // ✅ Al escribir el ROPER, se guarda en localStorage para los próximos reportes
   const cambiarRoper = (valor) => {
     const v = valor.toUpperCase();
     setForm(prev => ({ ...prev, roper: v }));
@@ -87,7 +105,7 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
       if (!form.camara || !form.zona || !form.roper || !form.incidencia || !form.asunto_inicio)
         return alert("Complete todos los datos iniciales incluyendo la Incidencia.");
       if (requiereEspecificar(form.incidencia) && !form.incidencia_otro)
-        return alert("Debe especificar el detalle de la incidencia.");
+        return alert("Debe especificar el detalle de incidencias.");
       setEtapa('DESARROLLO');
       setEdicionCampos(false);
     } else if (etapa === 'DESARROLLO') {
@@ -136,26 +154,19 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
       if (form.asunto_desarrollo) await enviarPaquete('DESARROLLO', form.asunto_desarrollo, '', archivos.desarrollo);
       if (form.asunto_finalizado) await enviarPaquete('FINALIZADO', form.asunto_finalizado, form.atendido, archivos.finalizado);
 
-      // ✅ CAMBIO 2: Lógica de Socket corregida para Red Local
-      // Usamos getSocketUrl() para apuntar al puerto 3000 con la IP correcta.
-      // Esperamos al evento 'connect' para emitir, evitando que se desconecte antes de enviar.
       const socketBot = io(getSocketUrl());
-      
       socketBot.on('connect', () => {
-        console.log('[SISIFO] Bot conectado, enviando mensaje...');
-        socketBot.emit('enviar_mensaje', { 
-          remitente: 'SISTEMA', 
-          contenido: `Incidencia #${idGenerado} consolidada.`, 
-          es_sistema: true 
+        socketBot.emit('enviar_mensaje', {
+          remitente: 'SISTEMA',
+          contenido: `Incidencia #${idGenerado} consolidada.`,
+          es_sistema: true
         });
-        
-        // Desconectamos después de un breve margen para asegurar entrega
         setTimeout(() => socketBot.disconnect(), 500);
       });
 
       alert(`Reporte enviado: #${idGenerado}`);
       setEtapa('INICIO');
-      // ✅ El ROPER NO se borra al enviar: se mantiene lo que está en pantalla
+      setResetKey(prev => prev + 1);
       setForm({ camara: '', zona: '', roper: form.roper, categoria: '', incidencia: '', incidencia_otro: '', asunto_inicio: '', asunto_desarrollo: '', asunto_finalizado: '', atendido: '' });
       setBusquedaIncidencia('');
       setArchivos({ inicio: [], desarrollo: [], finalizado: [] });
@@ -275,24 +286,27 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
   const esIncidenciaEspecificar = requiereEspecificar(form.incidencia);
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #ddd', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)', maxWidth: '600px', margin: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '20px', fontSize: '12px', fontWeight: 'bold', color: '#666' }}>
-        <span style={{ color: etapa === 'INICIO' ? '#0056b3' : 'inherit' }}>1. INICIO</span><span>→</span>
-        <span style={{ color: etapa === 'DESARROLLO' ? '#0056b3' : 'inherit' }}>2. DESARROLLO</span><span>→</span>
-        <span style={{ color: etapa === 'FINALIZADO' ? '#0056b3' : 'inherit' }}>3. FINALIZADO</span>
+    <div className="formulario-container">
+      <div className="formulario-etapas">
+        <span className={etapa === 'INICIO' ? 'etapa-activa' : ''}>1. INICIO</span>
+        <span className="etapa-separador">→</span>
+        <span className={etapa === 'DESARROLLO' ? 'etapa-activa' : ''}>2. DESARROLLO</span>
+        <span className="etapa-separador">→</span>
+        <span className={etapa === 'FINALIZADO' ? 'etapa-activa' : ''}>3. FINALIZADO</span>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '15px' }}>
-        <h3 style={{ margin: 0 }}>Etapa: {etapa}</h3>
+
+      <div className="formulario-header">
+        <h3>Etapa: {etapa}</h3>
         {etapa !== 'INICIO' && (
-          <button type="button" onClick={() => setEdicionCampos(!edicionCampos)} style={{ background: edicionCampos ? '#6c757d' : '#ff9800', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 'bold' }}>
+          <button type="button" onClick={() => setEdicionCampos(!edicionCampos)} className={`btn-editar ${edicionCampos ? 'editando' : ''}`}>
             <Edit size={14} /> {edicionCampos ? 'Bloquear Campos' : 'Editar (Seguimiento)'}
           </button>
         )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' }}>
-
+      <div className="formulario-campos">
         <AutocompleteCamara
+          key={resetKey}
           value={form.camara}
           onSelect={(camara) => {
             setForm(prev => ({
@@ -307,31 +321,15 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
         />
 
         <input
-          style={{
-            padding: '8px',
-            background: form.zona ? '#e9ecef' : '#fff',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            color: form.zona ? '#495057' : '#6c757d',
-            fontStyle: form.zona ? 'normal' : 'italic',
-            fontWeight: form.zona ? 'bold' : 'normal'
-          }}
+          className={`formulario-input ${form.zona ? 'con-valor' : ''}`}
           type="text"
           placeholder="Zona (se autocompleta al elegir cámara)"
           value={form.zona}
           readOnly
         />
 
-        {/* ✅ ROPER editable la 1ª vez; se autoguarda y queda fijo para el resto del turno */}
         <input
-          style={{
-            padding: '8px',
-            background: form.roper ? '#f1f8f3' : '#fff',
-            border: `1px solid ${form.roper ? '#28a745' : '#ccc'}`,
-            borderRadius: '4px',
-            color: '#333',
-            fontWeight: 'bold'
-          }}
+          className={`formulario-input roper ${form.roper ? 'con-valor' : ''}`}
           type="text"
           placeholder="ROPER (escríbelo una vez y se guarda para el turno)"
           value={form.roper}
@@ -340,111 +338,141 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
           title="Se guarda automáticamente; se limpia al cerrar sesión"
         />
 
-        {/* ===== INCIDENCIA ===== */}
         {esIncidenciaEspecificar ? (
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
-            <span style={{
-              display: 'flex', alignItems: 'center', padding: '0 12px',
-              background: '#e9ecef', border: '1px solid #adb5bd', borderRight: 'none',
-              borderRadius: '4px 0 0 4px', fontSize: '11px', fontWeight: 'bold', color: '#495057', whiteSpace: 'nowrap', flex: '0 0 auto'
-            }}>
-              {form.incidencia}
-            </span>
+          <div className="incidencia-especificar">
+            <span className="etiqueta">{form.incidencia}</span>
             <input
               type="text"
               placeholder="Escriba el detalle de la incidencia..."
               value={form.incidencia_otro}
               onChange={e => setForm({ ...form, incidencia_otro: e.target.value.toUpperCase() })}
               autoFocus
-              style={{
-                flex: 1, padding: '10px', border: '2px solid #ff9800', borderRadius: '0 4px 4px 0',
-                fontSize: '13px', textTransform: 'uppercase', background: '#fff8ee'
-              }}
+              className="input-detalle"
             />
             <button
               type="button"
               onClick={() => setForm({ ...form, incidencia: '', categoria: '', incidencia_otro: '' })}
               title="Cancelar y volver a buscar"
-              style={{ background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', width: '34px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px' }}
+              className="btn-cancelar"
             >
               ×
             </button>
           </div>
         ) : (
-          <div style={{ position: 'relative' }} ref={sugerenciasRef}>
-            <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', display: 'block', marginBottom: '5px' }}>
-              Incidencia: <span style={{ fontSize: '10px', color: '#888', fontWeight: 'normal' }}>(↑↓ navegar · Enter elegir · Esc cerrar)</span>
+          <div className="sugerencias-container" ref={sugerenciasRef}>
+            <label className="formulario-label">
+              Incidencia: <span className="label-hint">(↑↓ navegar · Enter elegir · Esc cerrar)</span>
             </label>
-            <input
-              ref={inputBusquedaRef}
-              type="text"
-              placeholder="🔍 Escriba para buscar incidencia o categoría..."
-              value={busquedaIncidencia}
-              onChange={(e) => {
-                const valor = e.target.value.toUpperCase();
-                setBusquedaIncidencia(valor);
-                const coincide = buscarTipif(valor);
-                setMostrarSugerencias(coincide.length > 0);
-                setIndiceSeleccionado(coincide.length > 0 ? 0 : -1);
-                if (form.incidencia && !valor.includes(form.incidencia.substring(0, 10))) setForm({ ...form, incidencia: '', categoria: '' });
-              }}
-              onFocus={() => { if (busquedaIncidencia.trim() !== '' && busquedaIncidencia !== form.incidencia) setMostrarSugerencias(true); }}
-              onKeyDown={handleKeyDownBusqueda}
-              style={{ padding: '10px', border: '2px solid #0056b3', borderRadius: '4px', fontSize: '13px', background: '#fff', width: '100%', boxSizing: 'border-box', textTransform: 'uppercase' }}
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                ref={inputBusquedaRef}
+                type="text"
+                placeholder=" Escriba para buscar incidencia o categoría..."
+                value={busquedaIncidencia}
+                onChange={(e) => {
+                  const valor = e.target.value.toUpperCase();
+                  setBusquedaIncidencia(valor);
+                  const coincide = buscarTipif(valor);
+                  setMostrarSugerencias(coincide.length > 0);
+                  setIndiceSeleccionado(coincide.length > 0 ? 0 : -1);
+                  if (form.incidencia && !valor.includes(form.incidencia.substring(0, 10))) setForm({ ...form, incidencia: '', categoria: '' });
+                }}
+                onFocus={() => { if (busquedaIncidencia.trim() !== '' && busquedaIncidencia !== form.incidencia) setMostrarSugerencias(true); }}
+                onKeyDown={handleKeyDownBusqueda}
+                className="formulario-input incidencia"
+                style={{ paddingRight: busquedaIncidencia ? '40px' : '14px' }}
+              />
+              {/* ✅ NUEVO: Botón X para limpiar incidencia rápidamente */}
+              {busquedaIncidencia && (
+                <button
+                  type="button"
+                  onClick={limpiarIncidencia}
+                  title="Limpiar incidencia"
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    background: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    transition: 'background 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#c82333'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#dc3545'}
+                >
+                  ×
+                </button>
+              )}
+            </div>
             {mostrarSugerencias && sugerenciasFiltradas.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ccc', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', maxHeight: '300px', overflowY: 'auto', zIndex: 1000, marginTop: '5px' }}>
+              <div className="sugerencias-lista">
                 {sugerenciasFiltradas.map((t, idx) => {
                   const activa = idx === indiceSeleccionado;
                   const esGlobal = t.categoria === "OTRAS INCIDENCIAS NO TIPIFICADAS";
                   return (
                     <div key={idx} ref={activa ? opcionRef : null} onClick={() => seleccionarIncidencia(t)} onMouseEnter={() => setIndiceSeleccionado(idx)}
-                      style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #eee', fontSize: '12px',
-                        background: activa ? '#0056b3' : (esGlobal ? '#fff3cd' : (form.incidencia === t.incidencia ? '#e3f2fd' : 'white')),
-                        color: activa ? 'white' : (esGlobal ? '#856404' : '#333'),
-                        transition: 'background 0.15s, color 0.15s', fontWeight: (activa || esGlobal) ? 'bold' : 'normal' }}>
-                      <strong style={{ color: activa ? '#ffd54f' : (esGlobal ? '#ff9800' : '#0056b3') }}>{String(idx + 1).padStart(3, '0')}.</strong> {t.incidencia}
-                      <span style={{ float: 'right', fontSize: '10px', opacity: 0.8 }}>{t.categoria}</span>
+                      className={`sugerencia-item ${activa ? 'activa' : ''} ${esGlobal ? 'global' : ''} ${form.incidencia === t.incidencia ? 'seleccionada' : ''}`}>
+                      <strong className="sugerencia-numero">{String(idx + 1).padStart(3, '0')}.</strong> {t.incidencia}
+                      <span className="sugerencia-categoria">{t.categoria}</span>
                     </div>
                   );
                 })}
               </div>
             )}
             {mostrarSugerencias && sugerenciasFiltradas.length === 0 && busquedaIncidencia.trim() !== '' && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ccc', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: '15px', zIndex: 1000, marginTop: '5px', textAlign: 'center', color: '#666', fontSize: '13px' }}>No se encontraron coincidencias</div>
+              <div className="sugerencias-vacio">No se encontraron coincidencias</div>
             )}
           </div>
         )}
 
-        <input style={{ padding: '8px', background: form.categoria ? '#e9ecef' : '#fff', border: '1px solid #ccc', borderRadius: '4px', color: form.categoria ? '#495057' : '#6c757d', fontStyle: form.categoria ? 'normal' : 'italic', fontWeight: form.categoria ? 'bold' : 'normal' }} type="text" placeholder="Categoría (autocompletada)" value={form.categoria} readOnly />
+        <input 
+          className={`formulario-input ${form.categoria ? 'con-valor' : ''}`}
+          type="text" 
+          placeholder="Categoría (autocompletada)" 
+          value={form.categoria} 
+          readOnly 
+        />
       </div>
 
-      {/* ✅ Paso 3: bloques por etapa con display:none (nunca se desmontan → no se pierden unidades ni conclusión) */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div className="formulario-textareas">
         <div style={{ display: etapa === 'INICIO' ? 'block' : 'none' }}>
-          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Asunto Inicial... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_inicio} onChange={e => setForm({ ...form, asunto_inicio: e.target.value.toUpperCase() })} />
+          <label className="formulario-label">Asunto Inicial</label>
+          <textarea className="formulario-textarea" placeholder="Describa el Asunto Inicial... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_inicio} onChange={e => setForm({ ...form, asunto_inicio: e.target.value.toUpperCase() })} />
         </div>
         <div style={{ display: etapa === 'DESARROLLO' ? 'block' : 'none' }}>
-          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Describa el Desarrollo... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_desarrollo} onChange={e => setForm({ ...form, asunto_desarrollo: e.target.value.toUpperCase() })} />
+          <label className="formulario-label">Desarrollo</label>
+          <textarea className="formulario-textarea" placeholder="Describa el Desarrollo... (Enter = avanzar · Shift+Enter = nueva línea)" value={form.asunto_desarrollo} onChange={e => setForm({ ...form, asunto_desarrollo: e.target.value.toUpperCase() })} />
         </div>
         <div style={{ display: etapa === 'FINALIZADO' ? 'block' : 'none' }}>
-          <textarea style={{ padding: '8px', height: '60px', border: '1px solid #ccc', borderRadius: '4px' }} placeholder="Conclusión / Reporte Final... (Enter = enviar · Shift+Enter = nueva línea)" value={form.asunto_finalizado} onChange={e => setForm({ ...form, asunto_finalizado: e.target.value.toUpperCase() })} />
-          <AutocompleteAtendido onChange={(valor) => setForm(prev => ({ ...prev, atendido: valor }))} />
+          <label className="formulario-label">Conclusión / Reporte Final</label>
+          <textarea className="formulario-textarea" placeholder="Conclusión / Reporte Final... (Enter = enviar · Shift+Enter = nueva línea)" value={form.asunto_finalizado} onChange={e => setForm({ ...form, asunto_finalizado: e.target.value.toUpperCase() })} />
+          <div style={{ marginTop: '10px' }}>
+            <AutocompleteAtendido onChange={(valor) => setForm(prev => ({ ...prev, atendido: valor }))} />
+          </div>
         </div>
 
-        <label style={{ cursor: 'pointer', background: '#eaf4ff', padding: '15px', borderRadius: '5px', textAlign: 'center', border: '2px dashed #0056b3', marginTop: '10px' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginBottom: '5px', color: '#0056b3' }}><Camera size={20} /> o <ClipboardPaste size={20} /></div>
-          <span style={{ fontSize: '14px', color: '#333', fontWeight: 'bold' }}>Presiona Ctrl+V para pegar imágenes</span><br />
-          <span style={{ fontSize: '11px', color: '#666' }}>O haz clic aquí para buscar</span>
+        <label className="formulario-imagenes">
+          <div className="iconos"><Camera size={22} /> o <ClipboardPaste size={22} /></div>
+          <span className="texto-principal">Presiona Ctrl+V para pegar imágenes</span><br />
+          <span className="texto-secundario">O haz clic aquí para buscar</span>
           <input type="file" multiple hidden onChange={handleFileUpload} />
         </label>
         {vistasPrevias[etapa.toLowerCase()].length > 0 && (
-          <div style={{ marginTop: '10px', background: '#f8f9fa', padding: '15px', borderRadius: '5px', border: '1px solid #ddd' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', justifyContent: 'center' }}>
+          <div className="formulario-vistas-previas">
+            <div className="formulario-vistas-previas-grid">
               {vistasPrevias[etapa.toLowerCase()].map((vp, index) => (
-                <div key={index} style={{ position: 'relative', display: 'inline-block' }}>
-                  <img src={vp} alt="Evidencia" style={{ height: '80px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #ccc' }} />
-                  <button type="button" onClick={() => eliminarFoto(index)} style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 0 }}>
+                <div key={index} className="vista-previa-item">
+                  <img src={vp} alt="Evidencia" />
+                  <button type="button" onClick={() => eliminarFoto(index)} className="btn-eliminar">
                     <CloseIcon size={14} />
                   </button>
                 </div>
@@ -455,21 +483,21 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
       </div>
 
       {enterArmado && (
-        <div style={{ textAlign: 'center', marginTop: '15px', padding: '8px', background: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', color: '#856404' }}>
+        <div className="formulario-enter-armado">
           ⚠️ ENTER ARMADO — presione ENTER de nuevo para {etapa !== 'FINALIZADO' ? 'avanzar' : 'ENVIAR'}, o Esc para cancelar
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #eee' }}>
-        <button type="button" onClick={retrocederEtapa} disabled={etapa === 'INICIO'} style={{ background: etapa === 'INICIO' ? '#ccc' : '#6c757d', color: 'white', padding: '10px 15px', border: 'none', borderRadius: '5px', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}>
+      <div className="formulario-navegacion">
+        <button type="button" onClick={retrocederEtapa} disabled={etapa === 'INICIO'} className="btn-navegacion btn-atras">
           <ArrowLeft size={16} /> Atrás
         </button>
         {etapa !== 'FINALIZADO' ? (
-          <button type="button" onClick={avanzarEtapa} style={{ background: enterArmado ? '#ff9800' : '#0056b3', color: 'white', padding: '10px 20px', border: enterArmado ? '3px solid #ff5722' : 'none', borderRadius: '5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', boxShadow: enterArmado ? '0 0 15px rgba(255,152,0,0.6)' : 'none', transform: enterArmado ? 'scale(1.05)' : 'scale(1)', transition: 'all 0.25s ease' }}>
+          <button type="button" onClick={avanzarEtapa} className={`btn-navegacion btn-continuar ${enterArmado ? 'armado' : ''}`}>
             Continuar <ArrowRight size={16} />
           </button>
         ) : (
-          <button type="button" onClick={handleSubmitConsolidado} style={{ background: enterArmado ? '#ff9800' : 'green', color: 'white', padding: '10px 20px', border: enterArmado ? '3px solid #ff5722' : 'none', borderRadius: '5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', boxShadow: enterArmado ? '0 0 15px rgba(255,152,0,0.6)' : 'none', transform: enterArmado ? 'scale(1.05)' : 'scale(1)', transition: 'all 0.25s ease' }}>
+          <button type="button" onClick={handleSubmitConsolidado} className={`btn-navegacion btn-enviar ${enterArmado ? 'armado' : ''}`}>
             ENVIAR CONSOLIDADO <Send size={16} />
           </button>
         )}

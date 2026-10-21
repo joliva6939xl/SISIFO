@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 
-// ✅ AGREGAR: URL del backend (igual que en LoginScreen)
 const API_URL = window.location.origin.includes('localhost') 
   ? 'http://localhost:3000/api' 
   : `http://${window.location.hostname}:3000/api`;
 
 export default function AutocompleteCamara({ value, onSelect, onClear }) {
+  // Se inicializa con el valor del padre. Se reinicia solo cuando la 'key' del componente cambia.
   const [busqueda, setBusqueda] = useState(value || '');
   const [camaras, setCamaras] = useState([]);
   const [mostrar, setMostrar] = useState(false);
@@ -14,7 +14,6 @@ export default function AutocompleteCamara({ value, onSelect, onClear }) {
   const wrapperRef = useRef(null);
 
   useEffect(() => {
-    // ✅ CAMBIAR: Usar API_URL completa en vez de '/api/camaras'
     axios.get(`${API_URL}/camaras`)
       .then(res => setCamaras(Array.isArray(res.data) ? res.data : []))
       .catch(err => { console.error("Error cargando cámaras:", err); setCamaras([]); });
