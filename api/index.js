@@ -12,8 +12,10 @@ const qrcode = require('qrcode');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
-const logger = require('./utils/logger');
 
+// ✅ CORREGIDO: Import único y correcto de los loggers
+const { logger, auditLogger } = require('./utils/logger');
+const requestLogger = require('./Middleware/requestLogger');
 
 const app = express();
 
@@ -21,7 +23,10 @@ const app = express();
 // SEGURIDAD: Helmet
 // ==========================================
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: false,
+  originAgentCluster: false,
+  contentSecurityPolicy: false
 }));
 
 // ==========================================
@@ -33,6 +38,7 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '1500mb' }));
+app.use(express.urlencoded({ limit: '1500mb', extended: true }));
 
 // ==========================================
 // LOGGING: Registrar todas las peticiones HTTP
@@ -42,7 +48,7 @@ app.use(morgan('combined', {
     write: message => logger.info(message.trim()) 
   } 
 }));
-app.use(express.urlencoded({ limit: '1500mb', extended: true }));
+app.use(requestLogger); // ✅ Middleware de auditoría de peticiones
 
 // ==========================================
 // SEGURIDAD: Rate Limiting en login
@@ -60,7 +66,7 @@ const loginLimiter = rateLimit({
 app.use('/api/login', loginLimiter);
 
 // ==========================================
-// VERIFICACIÓN DE LICENCIA
+// VERIFICACIÓN DE LICENCIA (Placeholder)
 // ==========================================
 const verificarLicencia = async () => { return true; };
 
@@ -83,7 +89,10 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// CREAR USUARIO (CALL CENTER)
+// ==========================================
+// RUTAS DE USUARIOS Y AUTENTICACIÓN
+// ==========================================
+
 app.post('/api/usuarios', async (req, res) => {
   const { nombre, apellido, dni, cargo } = req.body;
   if (!nombre || !apellido || !dni) return res.status(400).send('Todos los campos son obligatorios.');
@@ -104,7 +113,6 @@ app.post('/api/usuarios', async (req, res) => {
   }
 });
 
-// CONFIGURAR OTP
 app.post('/api/otp/setup', async (req, res) => {
   const { usuario } = req.body;
   try {
@@ -129,16 +137,29 @@ app.post('/api/otp/setup', async (req, res) => {
   }
 });
 
-// LOGIN
+// ✅ LOGIN CORREGIDO (Sintaxis de try...catch arreglada)
 app.post('/api/login', async (req, res) => {
   const { usuario, token } = req.body;
+  const ip = req.ip || req.connection.remoteAddress;
+  
+  auditLogger.info('Intento de login', { usuario, ip });
+
   try {
     const result = await db.query('SELECT usuario, cargo, estado, motivo_estado, otp_secret FROM usuarios WHERE usuario = $1', [usuario]);
-    if (result.rows.length === 0) return res.status(401).send('Usuario no encontrado.');
+    if (result.rows.length === 0) {
+      auditLogger.warn('Login fallido: Usuario no encontrado', { usuario, ip });
+      return res.status(401).send('Usuario no encontrado.');
+    }
 
     const user = result.rows[0];
-    if (user.estado === 'BLOQUEADO') return res.status(403).send(`ACCESO DENEGADO. Motivo: ${user.motivo_estado}`);
-    if (!user.otp_secret) return res.status(400).send('Usuario no configurado. Contacte a Call Center.');
+    if (user.estado === 'BLOQUEADO') {
+      auditLogger.warn('Login fallido: Usuario bloqueado', { usuario, ip, motivo: user.motivo_estado });
+      return res.status(403).send(`ACCESO DENEGADO. Motivo: ${user.motivo_estado}`);
+    }
+    if (!user.otp_secret) {
+      auditLogger.warn('Login fallido: Sin OTP configurado', { usuario, ip });
+      return res.status(400).send('Usuario no configurado. Contacte a Call Center.');
+    }
 
     const verified = speakeasy.totp.verify({
       secret: user.otp_secret,
@@ -148,13 +169,24 @@ app.post('/api/login', async (req, res) => {
     });
 
     if (verified) {
+      auditLogger.info('Login exitoso', { usuario: user.usuario, cargo: user.cargo, ip });
       res.json({ success: true, usuario: user.usuario, cargo: user.cargo });
     } else {
+      auditLogger.warn('Login fallido: OTP incorrecto', { usuario, ip });
       res.status(401).send('Código incorrecto o expirado.');
     }
-  } catch (err) { 
+  } catch (err) {
+    auditLogger.error('Error crítico en login', { error: err.message, ip });
     res.status(500).send('Error en el servidor al autenticar.'); 
   }
+});
+
+// ✅ NUEVO: Ruta para registrar el logout
+app.post('/api/logout', (req, res) => {
+  const { usuario } = req.body;
+  const ip = req.ip || req.connection.remoteAddress;
+  auditLogger.info('Logout de sesión', { usuario, ip });
+  res.json({ success: true, message: 'Sesión cerrada correctamente' });
 });
 
 app.get('/api/usuarios', async (req, res) => {
@@ -177,7 +209,6 @@ app.put('/api/usuarios/:id/estado', async (req, res) => {
   }
 });
 
-// Endpoint para cambiar el cargo de un usuario
 app.put('/api/usuarios/:id/cargo', async (req, res) => {
   const { id } = req.params;
   const { cargo } = req.body;
@@ -198,6 +229,10 @@ app.delete('/api/usuarios/:id', async (req, res) => {
   }
 });
 
+// ==========================================
+// RUTAS DE REPORTES Y EXPORTACIÓN
+// ==========================================
+
 app.get('/api/reportes_globales', async (req, res) => {
   try {
     const result = await db.query(`SELECT id, id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, turno, operador, centro_trabajo, TO_CHAR(creado_el, 'DD/MM/YYYY HH24:MI') as fecha FROM reportes_monitoreo ORDER BY creado_el DESC`);
@@ -216,8 +251,64 @@ app.get('/api/reportes/:operador', async (req, res) => {
   }
 });
 
+app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
+  const { id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, operador, centro_trabajo, turno } = req.body;
+  const rutas_archivos = req.files && req.files.length > 0 ? JSON.stringify(req.files.map(file => `/uploads/${file.filename}`)) : null;
+  
+  try {
+    const result = await db.query(
+      'INSERT INTO reportes_monitoreo (id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, operador, centro_trabajo, turno) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *',
+      [id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno]
+    );
+
+    // ✅ LOG DE AUDITORÍA: Creación de reporte
+    auditLogger.info('Reporte creado', { 
+      id_incidencia, 
+      operador, 
+      etapa,
+      ip: req.ip 
+    });
+
+    if (etapa && etapa.toUpperCase() === 'FINALIZADO') {
+      io.emit('nuevo_reporte_analista', {
+        id_incidencia: id_incidencia,
+        usuario: operador,
+        fecha: new Date().toLocaleString('es-PE'),
+        turno: turno,
+        zona: zona,
+        categoria: categoria,
+        incidencia: incidencia
+      });
+
+      try {
+        const salaReportes = await db.query("SELECT id_sala FROM chats_salas WHERE nombre_sala = 'REPORTE DE LLAMADAS :C' LIMIT 1");
+        if (salaReportes.rows.length > 0) {
+          const idSalaDestino = salaReportes.rows[0].id_sala;
+          const mensajeBot = `USUARIO ${operador.toUpperCase()} GENERO INCIDENCIA #${id_incidencia} - ${categoria || 'SIN CATEGORIA'} - ${incidencia || 'SIN INCIDENCIA'}`;
+          const msgInsertado = await db.query(
+            "INSERT INTO chats_mensajes (id_sala, remitente, contenido) VALUES ($1, $2, $3) RETURNING *",
+            [idSalaDestino, 'BOT_SISIFO', mensajeBot]
+          );
+          io.emit('nuevo_mensaje', msgInsertado.rows[0]);
+        }
+      } catch(errBot) { 
+        console.error("Error al disparar bot de incidencia:", errBot); 
+      }
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) { 
+    console.error("Error en /api/reportes:", err);
+    res.status(500).send('Error al guardar reporte.'); 
+  }
+});
+
 app.post('/api/exportar', exportController.descargarReporte);
 app.get('/galeria/:id', exportController.galeria);
+
+// ==========================================
+// RUTAS DE CHAT / SALAS
+// ==========================================
 
 app.post('/api/salas', async (req, res) => {
   const { nombre_sala, creado_por, tipo } = req.body;
@@ -291,61 +382,10 @@ app.delete('/api/mensajes/:id', async (req, res) => {
   }
 });
 
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }, maxHttpBufferSize: 1e8 });
+// ==========================================
+// AUTOCOMPLETADOS
+// ==========================================
 
-// ==========================================================
-// RUTA DE REPORTES
-// ==========================================================
-app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
-  const { id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, operador, centro_trabajo, turno } = req.body;
-  const rutas_archivos = req.files && req.files.length > 0 ? JSON.stringify(req.files.map(file => `/uploads/${file.filename}`)) : null;
-  
-  try {
-    const result = await db.query(
-      'INSERT INTO reportes_monitoreo (id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, operador, centro_trabajo, turno) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *',
-      [id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno]
-    );
-
-    if (etapa && etapa.toUpperCase() === 'FINALIZADO') {
-      io.emit('nuevo_reporte_analista', {
-        id_incidencia: id_incidencia,
-        usuario: operador,
-        fecha: new Date().toLocaleString('es-PE'),
-        turno: turno,
-        zona: zona,
-        categoria: categoria,
-        incidencia: incidencia
-      });
-    }
-
-    if (etapa && etapa.toUpperCase() === 'FINALIZADO') {
-      try {
-        const salaReportes = await db.query("SELECT id_sala FROM chats_salas WHERE nombre_sala = 'REPORTE DE LLAMADAS :C' LIMIT 1");
-        if (salaReportes.rows.length > 0) {
-          const idSalaDestino = salaReportes.rows[0].id_sala;
-          const mensajeBot = `USUARIO ${operador.toUpperCase()} GENERO INCIDENCIA #${id_incidencia} - ${categoria || 'SIN CATEGORIA'} - ${incidencia || 'SIN INCIDENCIA'}`;
-          const msgInsertado = await db.query(
-            "INSERT INTO chats_mensajes (id_sala, remitente, contenido) VALUES ($1, $2, $3) RETURNING *",
-            [idSalaDestino, 'BOT_SISIFO', mensajeBot]
-          );
-          io.emit('nuevo_mensaje', msgInsertado.rows[0]);
-        }
-      } catch(errBot) { 
-        console.error("Error al disparar bot de incidencia:", errBot); 
-      }
-    }
-
-    res.json(result.rows[0]);
-  } catch (err) { 
-    console.error("Error en /api/reportes:", err);
-    res.status(500).send('Error al guardar reporte.'); 
-  }
-});
-
-// ==========================================================
-// GET CÁMARAS PARA AUTOCOMPLETADO
-// ==========================================================
 app.get('/api/camaras', async (req, res) => {
   try {
     const result = await db.query("SELECT codigo, nombre, macro_zona, sector FROM camaras ORDER BY codigo ASC");
@@ -356,9 +396,6 @@ app.get('/api/camaras', async (req, res) => {
   }
 });
 
-// ==========================================================
-// GET PERSONAL DE CAMPO PARA AUTOCOMPLETADO
-// ==========================================================
 app.get('/api/personal', async (req, res) => {
   try {
     const result = await db.query(
@@ -381,13 +418,19 @@ app.get('/api/personal', async (req, res) => {
   }
 });
 
+// ==========================================
+// WEBSOCKETS Y SERVIDOR
+// ==========================================
+
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }, maxHttpBufferSize: 1e8 });
+
 require('./sockets')(io);
 
-// ==========================================================
-// MANEJO DE ERRORES (Middleware global)
-// ==========================================================
+// ==========================================
+// MANEJO DE ERRORES Y CATCH-ALL
+// ==========================================
 
-// Handler para rutas no encontradas (404)
 app.use((req, res, next) => {
   res.status(404).json({
     error: 'Ruta no encontrada',
@@ -395,7 +438,6 @@ app.use((req, res, next) => {
   });
 });
 
-// Middleware global de errores (SIEMPRE va al final)
 app.use((err, req, res, next) => {
   logger.error('Error capturado en el servidor', {
     message: err.message,
@@ -411,24 +453,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ==========================================================
-// CATCH-ALL: DEBE IR SIEMPRE AL FINAL (después de los errores)
-// ==========================================================
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-// ==========================================================
-// INICIO DEL SERVIDOR (Solo si se ejecuta directamente, NO en tests)
-// ==========================================================
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`[SISTEMA SISIFO] SERVIDOR CORRIENDO  ${PORT}`);
+    console.log(`[SISTEMA SISIFO] SERVIDOR CORRIENDO EN PUERTO ${PORT}`);
   });
 }
 
-// Exportamos la app para que Jest (supertest) pueda probarla
 module.exports = app;

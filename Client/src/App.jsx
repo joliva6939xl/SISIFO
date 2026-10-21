@@ -34,8 +34,26 @@ function App() {
     setSesionActiva(true);
   };
 
-  const handleLogout = () => {
+  // ✅ MODIFICADO: Ahora es async y avisa al backend antes de limpiar
+  const handleLogout = async () => {
     if (window.confirm("¿Cerrar sesión?")) {
+      const usuario = localStorage.getItem('sisifo_user');
+      
+      try {
+        // Determina la URL base correctamente (localhost o IP)
+        const apiBaseUrl = window.location.origin.includes('localhost') 
+          ? 'http://localhost:3000' 
+          : `http://${window.location.hostname}:3000`;
+
+        await fetch(`${apiBaseUrl}/api/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usuario })
+        });
+      } catch (error) {
+        console.error('No se pudo registrar el logout en el servidor:', error);
+      }
+
       localStorage.removeItem('sisifo_user');
       localStorage.removeItem('sisifo_cargo');
       localStorage.removeItem('sisifo_roper');
