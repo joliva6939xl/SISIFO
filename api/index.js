@@ -13,7 +13,6 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 
-// ✅ CORREGIDO: Import único y correcto de los loggers
 const { logger, auditLogger } = require('./utils/logger');
 const requestLogger = require('./Middleware/requestLogger');
 
@@ -48,7 +47,7 @@ app.use(morgan('combined', {
     write: message => logger.info(message.trim()) 
   } 
 }));
-app.use(requestLogger); // ✅ Middleware de auditoría de peticiones
+app.use(requestLogger);
 
 // ==========================================
 // SEGURIDAD: Rate Limiting en login
@@ -137,7 +136,6 @@ app.post('/api/otp/setup', async (req, res) => {
   }
 });
 
-// ✅ LOGIN CORREGIDO (Sintaxis de try...catch arreglada)
 app.post('/api/login', async (req, res) => {
   const { usuario, token } = req.body;
   const ip = req.ip || req.connection.remoteAddress;
@@ -181,7 +179,6 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// ✅ NUEVO: Ruta para registrar el logout
 app.post('/api/logout', (req, res) => {
   const { usuario } = req.body;
   const ip = req.ip || req.connection.remoteAddress;
@@ -233,39 +230,57 @@ app.delete('/api/usuarios/:id', async (req, res) => {
 // RUTAS DE REPORTES Y EXPORTACIÓN
 // ==========================================
 
+// ✅ MODIFICADO: Usa COALESCE para mostrar fecha_real si existe, sino creado_el
 app.get('/api/reportes_globales', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, turno, operador, centro_trabajo, TO_CHAR(creado_el, 'DD/MM/YYYY HH24:MI') as fecha FROM reportes_monitoreo ORDER BY creado_el DESC`);
+    const result = await db.query(`
+      SELECT id, id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, turno, operador, centro_trabajo, 
+             TO_CHAR(COALESCE(fecha_real, creado_el), 'DD/MM/YYYY HH24:MI') as fecha 
+      FROM reportes_monitoreo 
+      ORDER BY COALESCE(fecha_real, creado_el) DESC
+    `);
     res.json(result.rows);
   } catch (err) { 
     res.status(500).send('Error al leer el almacén global.'); 
   }
 });
 
+// ✅ MODIFICADO: Usa COALESCE para mostrar fecha_real si existe, sino creado_el
 app.get('/api/reportes/:operador', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, turno, TO_CHAR(creado_el, 'DD/MM/YYYY HH24:MI') as fecha FROM reportes_monitoreo WHERE operador = $1 ORDER BY creado_el DESC`, [req.params.operador]);
+    const result = await db.query(`
+      SELECT id, id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, turno, 
+             TO_CHAR(COALESCE(fecha_real, creado_el), 'DD/MM/YYYY HH24:MI') as fecha 
+      FROM reportes_monitoreo 
+      WHERE operador = $1 
+      ORDER BY COALESCE(fecha_real, creado_el) DESC
+    `, [req.params.operador]);
     res.json(result.rows);
   } catch (err) { 
     res.status(500).send('Error al leer almacén del operador.'); 
   }
 });
 
+// ✅ MODIFICADO: Acepta fecha_real_input y la guarda en la columna fecha_real
 app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
-  const { id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, operador, centro_trabajo, turno } = req.body;
+  const { id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, operador, centro_trabajo, turno, fecha_real_input } = req.body;
   const rutas_archivos = req.files && req.files.length > 0 ? JSON.stringify(req.files.map(file => `/uploads/${file.filename}`)) : null;
   
   try {
+    // Si viene fecha_real_input, úsala. Si no, usa la fecha/hora actual del servidor.
+    const fechaFinal = fecha_real_input ? new Date(fecha_real_input) : new Date();
+
     const result = await db.query(
-      'INSERT INTO reportes_monitoreo (id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, operador, centro_trabajo, turno) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *',
-      [id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno]
+      'INSERT INTO reportes_monitoreo (id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, operador, centro_trabajo, turno, fecha_real) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *',
+      [id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno, fechaFinal]
     );
 
-    // ✅ LOG DE AUDITORÍA: Creación de reporte
     auditLogger.info('Reporte creado', { 
       id_incidencia, 
       operador, 
       etapa,
+      es_retroactivo: !!fecha_real_input,
+      fecha_real: fechaFinal,
       ip: req.ip 
     });
 
@@ -273,7 +288,7 @@ app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
       io.emit('nuevo_reporte_analista', {
         id_incidencia: id_incidencia,
         usuario: operador,
-        fecha: new Date().toLocaleString('es-PE'),
+        fecha: fechaFinal.toLocaleString('es-PE'),
         turno: turno,
         zona: zona,
         categoria: categoria,

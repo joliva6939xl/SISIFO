@@ -23,6 +23,10 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
   const [edicionCampos, setEdicionCampos] = useState(false);
   const [resetKey, setResetKey] = useState(0);
 
+  // ✅ NUEVO: Estados para reporte retroactivo
+  const [esRetroactivo, setEsRetroactivo] = useState(false);
+  const [fechaRetroactiva, setFechaRetroactiva] = useState('');
+
   const roperInicial = localStorage.getItem('sisifo_roper') || '';
 
   const [form, setForm] = useState({
@@ -53,7 +57,6 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     setEnterArmado(true);
   };
 
-  // ✅ NUEVO: Función para limpiar incidencia rápidamente
   const limpiarIncidencia = () => {
     setBusquedaIncidencia('');
     setForm(prev => ({ 
@@ -64,7 +67,6 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
     }));
     setMostrarSugerencias(false);
     setIndiceSeleccionado(-1);
-    // Enfocar el input después de limpiar
     setTimeout(() => {
       if (inputBusquedaRef.current) {
         inputBusquedaRef.current.focus();
@@ -125,6 +127,12 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
   const handleSubmitConsolidado = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!form.asunto_finalizado || !form.atendido) { setEnterArmado(false); return alert("Complete el cierre."); }
+    
+    // ✅ VALIDACIÓN: Si es retroactivo, debe tener fecha
+    if (esRetroactivo && !fechaRetroactiva) {
+      return alert("Por favor, seleccione la fecha y hora real del incidente.");
+    }
+
     setEnterArmado(false);
     const idGenerado = Math.floor(Math.random() * 1000000);
     const incidenciaFinal = requiereEspecificar(form.incidencia)
@@ -145,6 +153,12 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
       fd.append('operador', usuarioGenerado);
       fd.append('centro_trabajo', centro);
       fd.append('turno', turno);
+      
+      // ✅ NUEVO: Adjuntar fecha real si es retroactivo
+      if (esRetroactivo && fechaRetroactiva) {
+        fd.append('fecha_real_input', fechaRetroactiva);
+      }
+      
       if (listaArchivos && listaArchivos.length > 0) listaArchivos.forEach(file => fd.append('archivos', file));
       return enviarReporte(fd);
     };
@@ -171,6 +185,10 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
       setBusquedaIncidencia('');
       setArchivos({ inicio: [], desarrollo: [], finalizado: [] });
       setVistasPrevias({ inicio: [], desarrollo: [], finalizado: [] });
+      
+      // ✅ NUEVO: Resetear estados retroactivos
+      setEsRetroactivo(false);
+      setFechaRetroactiva('');
     } catch (error) {
       console.error("Error al consolidar:", error);
       alert('Error al enviar.');
@@ -382,7 +400,6 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
                 className="formulario-input incidencia"
                 style={{ paddingRight: busquedaIncidencia ? '40px' : '14px' }}
               />
-              {/* ✅ NUEVO: Botón X para limpiar incidencia rápidamente */}
               {busquedaIncidencia && (
                 <button
                   type="button"
@@ -441,6 +458,53 @@ export default function FormularioReporte({ usuarioGenerado, centro, turno }) {
           value={form.categoria} 
           readOnly 
         />
+      </div>
+
+      {/* ✅ NUEVO: Bloque de Reporte Retroactivo */}
+      <div style={{ 
+        background: esRetroactivo ? '#fff3cd' : '#f8f9fa', 
+        border: `1px solid ${esRetroactivo ? '#ffc107' : '#dee2e6'}`, 
+        borderRadius: '6px', 
+        padding: '12px', 
+        marginBottom: '15px',
+        transition: 'all 0.3s ease'
+      }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', color: '#333' }}>
+          <input 
+            type="checkbox" 
+            checked={esRetroactivo} 
+            onChange={(e) => {
+              setEsRetroactivo(e.target.checked);
+              if (!e.target.checked) setFechaRetroactiva('');
+            }}
+            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+          />
+          📅 ¿El incidente ocurrió en una fecha anterior? (Ej. por fallas de sistema)
+        </label>
+        
+        {esRetroactivo && (
+          <div style={{ marginTop: '12px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px', color: '#856404' }}>
+              Fecha y hora real del incidente:
+            </label>
+            <input 
+              type="datetime-local" 
+              value={fechaRetroactiva} 
+              onChange={(e) => setFechaRetroactiva(e.target.value)}
+              style={{ 
+                width: '100%', 
+                padding: '8px', 
+                border: '1px solid #ced4da', 
+                borderRadius: '4px',
+                fontSize: '13px',
+                boxSizing: 'border-box'
+              }}
+            />
+            <div style={{ fontSize: '11px', color: '#856404', marginTop: '5px', fontStyle: 'italic' }}>
+              ℹ El sistema guardará esta fecha para el reporte, pero mantendrá el registro de auditoría de subida.
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="formulario-textareas">
