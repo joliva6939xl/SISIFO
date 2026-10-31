@@ -20,9 +20,7 @@ axios.interceptors.response.use(
       message: errorMessage
     });
 
-    // Manejar errores específicos
     if (statusCode === 401) {
-      // Sesión expirada o no autorizado
       localStorage.removeItem('sisifo_user');
       localStorage.removeItem('sisifo_cargo');
       window.location.href = '/';
@@ -44,7 +42,6 @@ axios.interceptors.response.use(
 // ==========================================
 axios.interceptors.request.use(
   config => {
-    // Aquí puedes agregar tokens de autenticación en el futuro
     return config;
   },
   error => {
@@ -122,15 +119,26 @@ export const configurarOTP = async (datos) => {
     };
   }
 };
+
+// ==========================================
+// ✅ NUEVO: ENDPOINTS DE CÁMARAS
+// ==========================================
+export const obtenerCamarasFijas = async () => {
+  return await axios.get(`${API_URL}/camaras-fijas`);
+};
+
+export const obtenerTodasLasCamaras = async () => {
+  return await axios.get(`${API_URL}/camaras/todas`);
+};
+
 // ==========================================
 // HELPERS DE RED: resuelven imágenes y socket contra el BACKEND (puerto 3000)
-// Usan la IP real desde la que se accede, no localhost.
 // ==========================================
 export const getSocketUrl = () =>
   `http://${window.location.hostname || 'localhost'}:3000`;
 
 export const getMediaUrl = (ruta) => {
   if (!ruta) return '';
-  if (typeof ruta === 'string' && ruta.startsWith('http')) return ruta; // ya es absoluta
+  if (typeof ruta === 'string' && ruta.startsWith('http')) return ruta;
   return `http://${window.location.hostname || 'localhost'}:3000${ruta}`;
 };

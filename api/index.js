@@ -230,7 +230,6 @@ app.delete('/api/usuarios/:id', async (req, res) => {
 // RUTAS DE REPORTES Y EXPORTACIÓN
 // ==========================================
 
-// ✅ MODIFICADO: Usa COALESCE para mostrar fecha_real si existe, sino creado_el
 app.get('/api/reportes_globales', async (req, res) => {
   try {
     const result = await db.query(`
@@ -245,7 +244,6 @@ app.get('/api/reportes_globales', async (req, res) => {
   }
 });
 
-// ✅ MODIFICADO: Usa COALESCE para mostrar fecha_real si existe, sino creado_el
 app.get('/api/reportes/:operador', async (req, res) => {
   try {
     const result = await db.query(`
@@ -261,18 +259,25 @@ app.get('/api/reportes/:operador', async (req, res) => {
   }
 });
 
-// ✅ MODIFICADO: Acepta fecha_real_input y la guarda en la columna fecha_real
 app.post('/api/reportes', upload.array('archivos', 10), async (req, res) => {
-  const { id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, operador, centro_trabajo, turno, fecha_real_input } = req.body;
+  const { 
+    id_incidencia, etapa, camara, zona, roper, categoria, incidencia, 
+    asunto, atendido, atendido_desarrollo, operador, centro_trabajo, turno, fecha_real_input 
+  } = req.body;
   const rutas_archivos = req.files && req.files.length > 0 ? JSON.stringify(req.files.map(file => `/uploads/${file.filename}`)) : null;
   
   try {
-    // Si viene fecha_real_input, úsala. Si no, usa la fecha/hora actual del servidor.
     const fechaFinal = fecha_real_input ? new Date(fecha_real_input) : new Date();
 
     const result = await db.query(
-      'INSERT INTO reportes_monitoreo (id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, foto_video, operador, centro_trabajo, turno, fecha_real) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *',
-      [id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, rutas_archivos, operador, centro_trabajo, turno, fechaFinal]
+      `INSERT INTO reportes_monitoreo 
+       (id_incidencia, etapa, camara, zona, roper, categoria, incidencia, asunto, atendido, atendido_desarrollo, foto_video, operador, centro_trabajo, turno, fecha_real) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
+       RETURNING *`,
+      [
+        id_incidencia, etapa, camara, zona, roper, categoria, incidencia, 
+        asunto, atendido || null, atendido_desarrollo || null, rutas_archivos, operador, centro_trabajo, turno, fechaFinal
+      ]
     );
 
     auditLogger.info('Reporte creado', { 
@@ -407,6 +412,30 @@ app.get('/api/camaras', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error("Error al cargar cámaras:", err);
+    res.status(500).send("Error al cargar cámaras.");
+  }
+});
+
+// ✅ NUEVO: Obtener solo cámaras fijas
+app.get('/api/camaras-fijas', async (req, res) => {
+  try {
+    const result = await db.query("SELECT codigo, nombre, macro_zona, sector FROM camaras_fijas ORDER BY codigo ASC");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error al cargar cámaras fijas:", err);
+    res.status(500).send("Error al cargar cámaras fijas.");
+  }
+});
+
+// ✅ NUEVO: Obtener TODAS las cámaras (PTZ + FIJAS) combinadas y ordenadas
+app.get('/api/camaras/todas', async (req, res) => {
+  try {
+    const ptz = await db.query("SELECT codigo, nombre, macro_zona, sector, 'PTZ' as tipo FROM camaras");
+    const fijas = await db.query("SELECT codigo, nombre, macro_zona, sector, 'FIJA' as tipo FROM camaras_fijas");
+    const todas = [...ptz.rows, ...fijas.rows].sort((a, b) => a.codigo.localeCompare(b.codigo));
+    res.json(todas);
+  } catch (err) {
+    console.error("Error al cargar todas las cámaras:", err);
     res.status(500).send("Error al cargar cámaras.");
   }
 });

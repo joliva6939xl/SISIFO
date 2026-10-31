@@ -5,19 +5,20 @@ const API_URL = window.location.origin.includes('localhost')
   ? 'http://localhost:3000/api' 
   : `http://${window.location.hostname}:3000/api`;
 
-export default function AutocompleteCamara({ value, onSelect, onClear }) {
-  // Se inicializa con el valor del padre. Se reinicia solo cuando la 'key' del componente cambia.
+export default function AutocompleteCamara({ value, onSelect, onClear, tipoCamara = 'PTZ' }) {
   const [busqueda, setBusqueda] = useState(value || '');
   const [camaras, setCamaras] = useState([]);
   const [mostrar, setMostrar] = useState(false);
   const [indiceActivo, setIndiceActivo] = useState(-1);
   const wrapperRef = useRef(null);
 
+  // ✅ NUEVO: Cambia el endpoint según el tipo de cámara seleccionado
   useEffect(() => {
-    axios.get(`${API_URL}/camaras`)
+    const endpoint = tipoCamara === 'FIJA' ? '/camaras-fijas' : '/camaras';
+    axios.get(`${API_URL}${endpoint}`)
       .then(res => setCamaras(Array.isArray(res.data) ? res.data : []))
       .catch(err => { console.error("Error cargando cámaras:", err); setCamaras([]); });
-  }, []);
+  }, [tipoCamara]); // Se vuelve a ejecutar cada vez que cambia el tipo de cámara
 
   const filtradas = busqueda.trim() === ''
     ? []
@@ -71,7 +72,8 @@ export default function AutocompleteCamara({ value, onSelect, onClear }) {
       </label>
       <input
         type="text"
-        placeholder="🔍 Buscar Cámara (ej: C-02, Hogar...)"
+        // ✅ NUEVO: Placeholder dinámico según el tipo de cámara
+        placeholder={`🔍 Buscar Cámara ${tipoCamara === 'FIJA' ? 'Fija' : 'PTZ'} (ej: ${tipoCamara === 'FIJA' ? 'CF-01' : 'C-02'}...)`}
         value={busqueda}
         onChange={(e) => {
           const valor = e.target.value.toUpperCase();
@@ -94,8 +96,9 @@ export default function AutocompleteCamara({ value, onSelect, onClear }) {
                 style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #eee', fontSize: '12px', background: activa ? '#0056b3' : 'white', color: activa ? 'white' : '#333', transition: 'background 0.15s, color 0.15s', fontWeight: activa ? 'bold' : 'normal' }}>
                 <strong style={{ color: activa ? '#ffd54f' : '#0056b3' }}>{String(idx + 1).padStart(3, '0')}.</strong> {' '}
                 {c.codigo} - {c.nombre}
+                {/* ✅ NUEVO: Muestra el sector solo si existe (evita "SECTOR null") */}
                 <span style={{ float: 'right', fontWeight: 'bold', color: activa ? '#ffd54f' : '#666', fontSize: '11px' }}>
-                  {c.macro_zona}/SECTOR {c.sector}
+                  {c.macro_zona}{c.sector ? ` / SECTOR ${c.sector}` : ''}
                 </span>
               </div>
             );
@@ -105,7 +108,7 @@ export default function AutocompleteCamara({ value, onSelect, onClear }) {
 
       {mostrar && filtradas.length === 0 && busqueda.trim() !== '' && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #ccc', borderRadius: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: '15px', zIndex: 1000, marginTop: '5px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
-          No se encontraron cámaras para "{busqueda}"
+          No se encontraron cámaras {tipoCamara === 'FIJA' ? 'fijas' : 'PTZ'} para "{busqueda}"
         </div>
       )}
     </div>
